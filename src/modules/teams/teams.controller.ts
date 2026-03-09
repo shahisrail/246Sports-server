@@ -2,15 +2,17 @@ import { Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../../config/database';
 import { successResponse, errorResponse, paginatedResponse } from '../../utils/responseHandler';
-import { AuthRequest, TeamCategory, Gender } from '../../types';
+import { AuthRequest, TeamCategory, Gender, UserRole } from '../../types';
 import { AuditAction } from '../../types';
 
 /**
  * @swagger
  * /teams:
  *   get:
- *     summary: Get all teams
+ *     summary: Get all teams (with tenant isolation)
  *     tags: [Teams]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: page
@@ -30,17 +32,29 @@ import { AuditAction } from '../../types';
  *         schema:
  *           type: string
  *           format: uuid
+ *       - in: query
+ *         name: include_admins
+ *         schema:
+ *           type: boolean
+ *         description: Include admin information
  *     responses:
  *       200:
  *         description: Teams retrieved successfully
  */
 export const getTeams = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    // REQUIRES AUTHENTICATION - tenant isolation
+    if (!req.user) {
+      errorResponse(res, 'Authentication required', 401, 'AUTHENTICATION_REQUIRED');
+      return;
+    }
+
     const { page = 1, limit = 10, club_id, competition_id, include_admins = 'false' } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
 
     let queryText = `
-      SELECT t.*, c.name as club_name, comp.name as competition_name
+      SELECT t.*, c.name as club_name, c.association_id as club_association_id,
+             comp.name as competition_name
       FROM teams t
       LEFT JOIN clubs c ON t.club_id = c.id
       LEFT JOIN competitions comp ON t.competition_id = comp.id
@@ -48,9 +62,27 @@ export const getTeams = async (req: AuthRequest, res: Response): Promise<void> =
     `;
     let params: any[] = [];
 
+    // TENANT ISOLATION: Filter teams by user's association/club
+    if (req.user.role !== UserRole.SUPER_ADMIN) {
+      if (req.user.role === UserRole.ASSOCIATION_ADMIN && req.user.associationId) {
+        queryText += ` AND c.association_id = $${params.length + 1}`;
+        params.push(req.user.associationId);
+      } else if ((req.user.role === UserRole.CLUB_ADMIN || req.user.role === UserRole.TEAM_MANAGER) && req.user.clubId) {
+        // Club admins and team managers can only see their own club's teams
+        queryText += ` AND t.club_id = $${params.length + 1}`;
+        params.push(req.user.clubId);
+      } else {
+        // Other roles get empty result
+        queryText += ` AND 1 = 0`;
+      }
+    }
+
     if (club_id) {
-      queryText += ` AND t.club_id = $${params.length + 1}`;
-      params.push(club_id);
+      // SUPER_ADMIN can filter by club_id
+      if (req.user.role === UserRole.SUPER_ADMIN) {
+        queryText += ` AND t.club_id = $${params.length + 1}`;
+        params.push(club_id);
+      }
     }
     if (competition_id) {
       queryText += ` AND t.competition_id = $${params.length + 1}`;
@@ -112,15 +144,30 @@ export const getTeams = async (req: AuthRequest, res: Response): Promise<void> =
     }
 
     // Get total count
-    let countQuery = 'SELECT COUNT(*) FROM teams WHERE deleted_at IS NULL';
+    let countQuery = 'SELECT COUNT(*) FROM teams t WHERE t.deleted_at IS NULL';
     let countParams: any[] = [];
 
-    if (club_id) {
-      countQuery += ` AND club_id = $1`;
+    // Apply same tenant filters to count query
+    if (req.user.role !== UserRole.SUPER_ADMIN) {
+      if (req.user.role === UserRole.ASSOCIATION_ADMIN && req.user.associationId) {
+        countQuery += ` AND EXISTS (
+          SELECT 1 FROM clubs c WHERE c.id = t.club_id AND c.association_id = $1
+        )`;
+        countParams.push(req.user.associationId);
+      } else if ((req.user.role === UserRole.CLUB_ADMIN || req.user.role === UserRole.TEAM_MANAGER) && req.user.clubId) {
+        countQuery += ` AND t.club_id = $1`;
+        countParams.push(req.user.clubId);
+      } else {
+        countQuery += ` AND 1 = 0`;
+      }
+    }
+
+    if (club_id && req.user.role === UserRole.SUPER_ADMIN) {
+      countQuery += ` AND t.club_id = $1`;
       countParams.push(club_id);
     }
     if (competition_id) {
-      countQuery += ` AND competition_id = $1`;
+      countQuery += ` AND t.competition_id = $1`;
       countParams.push(competition_id);
     }
 
@@ -138,6 +185,60 @@ export const getTeams = async (req: AuthRequest, res: Response): Promise<void> =
   } catch (error) {
     console.error('Get teams error:', error);
     errorResponse(res, 'Failed to get teams', 500, 'GET_TEAMS_FAILED');
+  }
+};
+
+/**
+ * @swagger
+ * /teams/public:
+ *   get:
+ *     summary: Get all teams (public - no auth, for website)
+ *     tags: [Teams]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Public teams list
+ */
+export const getPublicTeams = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+    const offset = (Number(page) - 1) * Number(limit);
+
+    const queryText = `
+      SELECT t.*, c.name as club_name, comp.name as competition_name
+      FROM teams t
+      LEFT JOIN clubs c ON t.club_id = c.id
+      LEFT JOIN competitions comp ON t.competition_id = comp.id
+      WHERE t.deleted_at IS NULL
+      ORDER BY t.name ASC
+      LIMIT $1 OFFSET $2
+    `;
+
+    const result = await query(queryText, [Number(limit), offset]);
+
+    // Get total count
+    const countResult = await query('SELECT COUNT(*) FROM teams WHERE deleted_at IS NULL', []);
+    const total = parseInt(countResult.rows[0].count);
+
+    paginatedResponse(
+      res,
+      result.rows,
+      Number(page),
+      Number(limit),
+      total,
+      'Public teams retrieved successfully'
+    );
+  } catch (error) {
+    console.error('Get public teams error:', error);
+    errorResponse(res, 'Failed to get public teams', 500, 'GET_PUBLIC_TEAMS_FAILED');
   }
 };
 

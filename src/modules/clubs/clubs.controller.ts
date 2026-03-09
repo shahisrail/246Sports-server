@@ -7,6 +7,225 @@ import { AuditAction } from '../../types';
 import { isValidCloudinaryUrl } from '../../utils/validateCloudinary';
 
 /**
+ * @swagger
+ * /clubs:
+ *   get:
+ *     summary: Get all clubs (with tenant isolation)
+ *     tags: [Clubs]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         description: Number of items per page
+ *       - in: query
+ *         name: association_id
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Filter by association ID
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search by club name
+ *       - in: query
+ *         name: include_admins
+ *         schema:
+ *           type: boolean
+ *         description: Include admin information
+ *     responses:
+ *       200:
+ *         description: Clubs retrieved successfully
+ */
+export const getClubs = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    // REQUIRES AUTHENTICATION - tenant isolation
+    if (!req.user) {
+      errorResponse(res, 'Authentication required', 401, 'AUTHENTICATION_REQUIRED');
+      return;
+    }
+
+    const { page = 1, limit = 10, association_id, search, include_admins = 'false' } = req.query;
+    const offset = (Number(page) - 1) * Number(limit);
+
+    let queryText = `
+      SELECT c.*, a.name as association_name
+      FROM clubs c
+      LEFT JOIN associations a ON c.association_id = a.id
+      WHERE c.deleted_at IS NULL
+    `;
+    let params: any[] = [];
+
+    // TENANT ISOLATION: Filter clubs by user's association
+    if (req.user.role !== UserRole.SUPER_ADMIN) {
+      if (req.user.role === UserRole.ASSOCIATION_ADMIN && req.user.associationId) {
+        queryText += ` AND c.association_id = $${params.length + 1}`;
+        params.push(req.user.associationId);
+      } else if ((req.user.role === UserRole.CLUB_ADMIN || req.user.role === UserRole.TEAM_MANAGER) && req.user.clubId) {
+        // Club admins and team managers can only see their own club
+        queryText += ` AND c.id = $${params.length + 1}`;
+        params.push(req.user.clubId);
+      } else {
+        // Other roles get empty result
+        queryText += ` AND 1 = 0`;
+      }
+    }
+
+    if (association_id) {
+      // SUPER_ADMIN can filter by association_id
+      if (req.user.role === UserRole.SUPER_ADMIN) {
+        queryText += ` AND c.association_id = $${params.length + 1}`;
+        params.push(association_id);
+      }
+    }
+    if (search) {
+      queryText += ` AND c.name ILIKE $${params.length + 1}`;
+      params.push(`%${search}%`);
+    }
+
+    queryText += ` ORDER BY c.name ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    params.push(Number(limit), offset);
+
+    const result = await query(queryText, params);
+
+    // If include_admins is true, fetch admin details for each club
+    let clubsWithAdmins = result.rows;
+    if (include_admins === 'true' && result.rows.length > 0) {
+      clubsWithAdmins = await Promise.all(
+        result.rows.map(async (club) => {
+          // Get club admin
+          const clubAdminResult = await query(
+            `SELECT u.id, u.name, u.email, u.role
+             FROM users u
+             WHERE u.club_id = $1
+             AND u.role = 'CLUB_ADMIN'
+             AND u.deleted_at IS NULL
+             LIMIT 1`,
+            [club.id]
+          );
+
+          // Get teams count
+          const teamCountResult = await query(
+            `SELECT COUNT(*) as count
+             FROM teams
+             WHERE club_id = $1 AND deleted_at IS NULL`,
+            [club.id]
+          );
+
+          return {
+            ...club,
+            club_admin: clubAdminResult.rows[0] || null,
+            teams_count: parseInt(teamCountResult.rows[0].count),
+          };
+        })
+      );
+    }
+
+    // Get total count
+    let countQuery = 'SELECT COUNT(*) FROM clubs WHERE deleted_at IS NULL';
+    let countParams: any[] = [];
+
+    // Apply same tenant filters to count query
+    if (req.user.role !== UserRole.SUPER_ADMIN) {
+      if (req.user.role === UserRole.ASSOCIATION_ADMIN && req.user.associationId) {
+        countQuery += ` AND association_id = $${countParams.length + 1}`;
+        countParams.push(req.user.associationId);
+      } else if ((req.user.role === UserRole.CLUB_ADMIN || req.user.role === UserRole.TEAM_MANAGER) && req.user.clubId) {
+        countQuery += ` AND id = $${countParams.length + 1}`;
+        countParams.push(req.user.clubId);
+      } else {
+        countQuery += ` AND 1 = 0`;
+      }
+    }
+
+    if (association_id && req.user.role === UserRole.SUPER_ADMIN) {
+      countQuery += ` AND association_id = $1`;
+      countParams.push(association_id);
+    }
+    if (search) {
+      countQuery += ` AND name ILIKE $1`;
+      countParams.push(`%${search}%`);
+    }
+
+    const countResult = await query(countQuery, countParams);
+    const total = parseInt(countResult.rows[0].count);
+
+    paginatedResponse(
+      res,
+      clubsWithAdmins,
+      Number(page),
+      Number(limit),
+      total,
+      'Clubs retrieved successfully'
+    );
+  } catch (error) {
+    console.error('Get clubs error:', error);
+    errorResponse(res, 'Failed to get clubs', 500, 'GET_CLUBS_FAILED');
+  }
+};
+
+/**
+ * @swagger
+ * /clubs/public:
+ *   get:
+ *     summary: Get all clubs (public - no auth, for website)
+ *     tags: [Clubs]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Public clubs list
+ */
+export const getPublicClubs = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+    const offset = (Number(page) - 1) * Number(limit);
+
+    const queryText = `
+      SELECT c.*, a.name as association_name
+      FROM clubs c
+      LEFT JOIN associations a ON c.association_id = a.id
+      WHERE c.deleted_at IS NULL
+      ORDER BY c.name ASC
+      LIMIT $1 OFFSET $2
+    `;
+
+    const result = await query(queryText, [Number(limit), offset]);
+
+    // Get total count
+    const countResult = await query('SELECT COUNT(*) FROM clubs WHERE deleted_at IS NULL', []);
+    const total = parseInt(countResult.rows[0].count);
+
+    paginatedResponse(
+      res,
+      result.rows,
+      Number(page),
+      Number(limit),
+      total,
+      'Public clubs retrieved successfully'
+    );
+  } catch (error) {
+    console.error('Get public clubs error:', error);
+    errorResponse(res, 'Failed to get public clubs', 500, 'GET_PUBLIC_CLUBS_FAILED');
+  }
+};
+
+/**
  * Test endpoint to debug request body
  */
 export const testEndpoint = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -126,119 +345,6 @@ export const testEndpoint = async (req: AuthRequest, res: Response): Promise<voi
  *                     total_pages:
  *                       type: integer
  */
-export const getClubs = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const { page = 1, limit = 10, association_id, search, include_admins = 'false' } = req.query;
-    const offset = (Number(page) - 1) * Number(limit);
-
-    let queryText = `
-      SELECT c.*, a.name as association_name
-      FROM clubs c
-      LEFT JOIN associations a ON c.association_id = a.id
-      WHERE c.deleted_at IS NULL
-    `;
-    let params: any[] = [];
-
-    // TENANT ISOLATION: Filter clubs by user's association
-    if (req.user && req.user.role !== UserRole.SUPER_ADMIN) {
-      if (req.user.role === UserRole.ASSOCIATION_ADMIN && req.user.associationId) {
-        queryText += ` AND c.association_id = $${params.length + 1}`;
-        params.push(req.user.associationId);
-      } else if ((req.user.role === UserRole.CLUB_ADMIN || req.user.role === UserRole.TEAM_MANAGER) && req.user.clubId) {
-        // Club admins and team managers can only see their own club
-        queryText += ` AND c.id = $${params.length + 1}`;
-        params.push(req.user.clubId);
-      }
-    }
-
-    if (association_id) {
-      queryText += ` AND c.association_id = $${params.length + 1}`;
-      params.push(association_id);
-    }
-    if (search) {
-      queryText += ` AND c.name ILIKE $${params.length + 1}`;
-      params.push(`%${search}%`);
-    }
-
-    queryText += ` ORDER BY c.name ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-    params.push(Number(limit), offset);
-
-    const result = await query(queryText, params);
-
-    // If include_admins is true, fetch admin details for each club
-    let clubsWithAdmins = result.rows;
-    if (include_admins === 'true' && result.rows.length > 0) {
-      clubsWithAdmins = await Promise.all(
-        result.rows.map(async (club) => {
-          // Get club admin
-          const clubAdminResult = await query(
-            `SELECT u.id, u.name, u.email, u.role
-             FROM users u
-             WHERE u.club_id = $1
-             AND u.role = 'CLUB_ADMIN'
-             AND u.deleted_at IS NULL
-             LIMIT 1`,
-            [club.id]
-          );
-
-          // Get teams count
-          const teamCountResult = await query(
-            `SELECT COUNT(*) as count
-             FROM teams
-             WHERE club_id = $1 AND deleted_at IS NULL`,
-            [club.id]
-          );
-
-          return {
-            ...club,
-            club_admin: clubAdminResult.rows[0] || null,
-            teams_count: parseInt(teamCountResult.rows[0].count),
-          };
-        })
-      );
-    }
-
-    // Get total count
-    let countQuery = 'SELECT COUNT(*) FROM clubs WHERE deleted_at IS NULL';
-    let countParams: any[] = [];
-
-    // Apply same tenant filters to count query
-    if (req.user && req.user.role !== UserRole.SUPER_ADMIN) {
-      if (req.user.role === UserRole.ASSOCIATION_ADMIN && req.user.associationId) {
-        countQuery += ` AND association_id = $${countParams.length + 1}`;
-        countParams.push(req.user.associationId);
-      } else if ((req.user.role === UserRole.CLUB_ADMIN || req.user.role === UserRole.TEAM_MANAGER) && req.user.clubId) {
-        countQuery += ` AND id = $${countParams.length + 1}`;
-        countParams.push(req.user.clubId);
-      }
-    }
-
-    if (association_id) {
-      countQuery += ` AND association_id = $1`;
-      countParams.push(association_id);
-    }
-    if (search) {
-      countQuery += ` AND name ILIKE $1`;
-      countParams.push(`%${search}%`);
-    }
-
-    const countResult = await query(countQuery, countParams);
-    const total = parseInt(countResult.rows[0].count);
-
-    paginatedResponse(
-      res,
-      clubsWithAdmins,
-      Number(page),
-      Number(limit),
-      total,
-      'Clubs retrieved successfully'
-    );
-  } catch (error) {
-    console.error('Get clubs error:', error);
-    errorResponse(res, 'Failed to get clubs', 500, 'GET_CLUBS_FAILED');
-  }
-};
-
 /**
  * @swagger
  * /clubs/{id}:

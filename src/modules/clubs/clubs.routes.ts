@@ -13,10 +13,13 @@ const router = Router();
  *   description: Club management endpoints
  */
 
-// Public routes
-router.get('/', clubsController.getClubs);
+// Public routes (for public website - NO tenant isolation)
+router.get('/public', clubsController.getPublicClubs);
 router.post('/test', clubsController.testEndpoint);
 router.get('/:id', validateUUID('id'), clubsController.getClubById);
+
+// Protected routes (with tenant isolation)
+router.get('/', authenticate, clubsController.getClubs);
 
 // Protected routes
 router.post(

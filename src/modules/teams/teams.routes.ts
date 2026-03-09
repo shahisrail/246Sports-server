@@ -13,9 +13,12 @@ const router = Router();
  *   description: Team management endpoints
  */
 
-// Public routes
-router.get('/', teamsController.getTeams);
+// Public routes (for public website)
+router.get('/public', teamsController.getPublicTeams);
 router.get('/:id', validateUUID('id'), teamsController.getTeamById);
+
+// Protected routes (with tenant isolation)
+router.get('/', authenticate, teamsController.getTeams);
 
 // Protected routes
 router.post(
