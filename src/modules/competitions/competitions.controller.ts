@@ -40,14 +40,18 @@ import { AuditAction } from '../../types';
  */
 export const getCompetitions = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { page = 1, limit = 10, association_id, sport, status } = req.query;
+    const { page = 1, limit = 10, association_id, sport_id, sport, status } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
 
+    // Support both sport_id (new) and sport (legacy for backward compatibility)
+    const sportFilter = sport_id || sport;
+
     let queryText = `
-      SELECT c.*, a.name as association_name, s.year as season_year
+      SELECT c.*, a.name as association_name, s.year as season_year, sp.name as sport_name, sp.slug as sport_slug
       FROM competitions c
       LEFT JOIN associations a ON c.association_id = a.id
       LEFT JOIN seasons s ON c.season_id = s.id
+      LEFT JOIN sports sp ON c.sport_id = sp.id
       WHERE c.deleted_at IS NULL
     `;
     let params: any[] = [];
@@ -81,9 +85,16 @@ export const getCompetitions = async (req: AuthRequest, res: Response): Promise<
       queryText += ` AND c.association_id = $${params.length + 1}`;
       params.push(association_id);
     }
-    if (sport) {
-      queryText += ` AND c.sport = $${params.length + 1}`;
-      params.push(sport);
+    if (sportFilter) {
+      // Use sport_id if provided, otherwise try to match by sport name (backward compatibility)
+      if (sport_id) {
+        queryText += ` AND c.sport_id = $${params.length + 1}`;
+        params.push(sportFilter);
+      } else {
+        // Legacy: filter by sport name
+        queryText += ` AND sp.slug = $${params.length + 1}`;
+        params.push(sportFilter);
+      }
     }
     if (status) {
       queryText += ` AND c.status = $${params.length + 1}`;
@@ -96,16 +107,16 @@ export const getCompetitions = async (req: AuthRequest, res: Response): Promise<
     const result = await query(queryText, params);
 
     // Get total count
-    let countQuery = 'SELECT COUNT(*) FROM competitions WHERE deleted_at IS NULL';
+    let countQuery = 'SELECT COUNT(*) FROM competitions c WHERE c.deleted_at IS NULL';
     let countParams: any[] = [];
 
     // Apply same tenant filters to count query
     if (req.user && req.user.role !== UserRole.SUPER_ADMIN) {
       if (req.user.role === UserRole.ASSOCIATION_ADMIN && req.user.associationId) {
-        countQuery += ` AND association_id = $${countParams.length + 1}`;
+        countQuery += ` AND c.association_id = $${countParams.length + 1}`;
         countParams.push(req.user.associationId);
       } else if ((req.user.role === UserRole.CLUB_ADMIN || req.user.role === UserRole.TEAM_MANAGER) && req.user.clubId) {
-        countQuery += ` AND id IN (
+        countQuery += ` AND c.id IN (
           SELECT DISTINCT competition_id FROM team_competitions
           WHERE team_id IN (SELECT id FROM teams WHERE club_id = $1)
         )`;
@@ -114,15 +125,20 @@ export const getCompetitions = async (req: AuthRequest, res: Response): Promise<
     }
 
     if (association_id) {
-      countQuery += ` AND association_id = $${countParams.length + 1}`;
+      countQuery += ` AND c.association_id = $${countParams.length + 1}`;
       countParams.push(association_id);
     }
-    if (sport) {
-      countQuery += ` AND sport = $${countParams.length + 1}`;
-      countParams.push(sport);
+    if (sportFilter) {
+      if (sport_id) {
+        countQuery += ` AND c.sport_id = $${countParams.length + 1}`;
+        countParams.push(sportFilter);
+      } else {
+        countQuery += ` AND c.sport_id = (SELECT id FROM sports WHERE slug = $1)`;
+        countParams.push(sportFilter);
+      }
     }
     if (status) {
-      countQuery += ` AND status = $${countParams.length + 1}`;
+      countQuery += ` AND c.status = $${countParams.length + 1}`;
       countParams.push(status);
     }
 
@@ -247,14 +263,28 @@ export const createCompetition = async (req: AuthRequest, res: Response): Promis
 
     const {
       name,
+      sport_id,
       sport,
       association_id,
       associationId,
       season_id,
       seasonId,
+      type, // Frontend sends "type" but backend uses "category"
       category = CompetitionCategory.LEAGUE,
       status = CompetitionStatus.UPCOMING,
       rules,
+      format,
+      description,
+      startDate,
+      start_date,
+      endDate,
+      end_date,
+      website,
+      websiteUrl,
+      contact_email,
+      contactEmail,
+      contact_phone,
+      contactPhone,
       points_win = 3,
       pointsWin = 3,
       points_draw = 1,
@@ -266,6 +296,13 @@ export const createCompetition = async (req: AuthRequest, res: Response): Promis
     // Support both camelCase and snake_case
     const finalAssociationId = associationId || association_id;
     const finalSeasonId = seasonId || season_id;
+    const finalSportId = sport_id || sport; // Support both sport_id (new) and sport (legacy)
+    const finalCategory = type || category; // type from frontend = category in backend
+    const finalStartDate = startDate || start_date;
+    const finalEndDate = endDate || end_date;
+    const finalWebsite = website || websiteUrl;
+    const finalContactEmail = contact_email || contactEmail;
+    const finalContactPhone = contact_phone || contactPhone;
     const finalPointsWin = pointsWin !== undefined ? pointsWin : points_win;
     const finalPointsDraw = pointsDraw !== undefined ? pointsDraw : points_draw;
     const finalPointsLoss = pointsLoss !== undefined ? pointsLoss : points_loss;
@@ -284,11 +321,47 @@ export const createCompetition = async (req: AuthRequest, res: Response): Promis
 
     const competitionId = uuidv4();
 
+    console.log('CREATE COMPETITION - Debug:', {
+      name,
+      type,
+      finalCategory,
+      format,
+      description,
+      finalStartDate,
+      finalEndDate,
+      finalWebsite,
+      finalContactEmail,
+      finalContactPhone,
+    });
+
     const result = await query(
-      `INSERT INTO competitions (id, name, sport, association_id, season_id, category, status, rules, points_win, points_draw, points_loss)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      `INSERT INTO competitions (
+        id, name, sport_id, association_id, season_id, category, status, rules,
+        format, description, start_date, end_date, website, contact_email, contact_phone,
+        points_win, points_draw, points_loss
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
        RETURNING *`,
-      [competitionId, name, sport, finalAssociationId, finalSeasonId, category, status, rules || null, finalPointsWin, finalPointsDraw, finalPointsLoss]
+      [
+        competitionId,
+        name,
+        finalSportId || null,
+        finalAssociationId,
+        finalSeasonId || null,
+        finalCategory || CompetitionCategory.LEAGUE,
+        status || CompetitionStatus.UPCOMING,
+        rules || null,
+        format || null,
+        description || null,
+        finalStartDate || null,
+        finalEndDate || null,
+        finalWebsite || null,
+        finalContactEmail || null,
+        finalContactPhone || null,
+        finalPointsWin,
+        finalPointsDraw,
+        finalPointsLoss,
+      ]
     );
 
     // Log audit
@@ -351,7 +424,27 @@ export const updateCompetition = async (req: AuthRequest, res: Response): Promis
     }
 
     const { id } = req.params;
-    const { name, sport, category, status, rules } = req.body;
+    const {
+      name,
+      sport_id,
+      sport,
+      type, // Frontend sends "type" but backend uses "category"
+      category,
+      status,
+      rules,
+      format,
+      description,
+      startDate,
+      start_date,
+      endDate,
+      end_date,
+      website,
+      websiteUrl,
+      contact_email,
+      contactEmail,
+      contact_phone,
+      contactPhone,
+    } = req.body;
 
     const existing = await query(
       'SELECT * FROM competitions WHERE id = $1 AND deleted_at IS NULL',
@@ -376,6 +469,15 @@ export const updateCompetition = async (req: AuthRequest, res: Response): Promis
       return;
     }
 
+    // Support both camelCase and snake_case
+    const finalSportId = sport_id || sport; // Support both sport_id (new) and sport (legacy)
+    const finalCategory = type !== undefined ? type : category;
+    const finalStartDate = startDate || start_date;
+    const finalEndDate = endDate || end_date;
+    const finalWebsite = website || websiteUrl;
+    const finalContactEmail = contact_email || contactEmail;
+    const finalContactPhone = contact_phone || contactPhone;
+
     const updates: string[] = [];
     const values: any[] = [];
     let paramCount = 1;
@@ -384,13 +486,13 @@ export const updateCompetition = async (req: AuthRequest, res: Response): Promis
       updates.push(`name = $${paramCount++}`);
       values.push(name);
     }
-    if (sport !== undefined) {
-      updates.push(`sport = $${paramCount++}`);
-      values.push(sport);
+    if (finalSportId !== undefined) {
+      updates.push(`sport_id = $${paramCount++}`);
+      values.push(finalSportId);
     }
-    if (category !== undefined) {
+    if (finalCategory !== undefined) {
       updates.push(`category = $${paramCount++}`);
-      values.push(category);
+      values.push(finalCategory);
     }
     if (status !== undefined) {
       updates.push(`status = $${paramCount++}`);
@@ -399,6 +501,34 @@ export const updateCompetition = async (req: AuthRequest, res: Response): Promis
     if (rules !== undefined) {
       updates.push(`rules = $${paramCount++}`);
       values.push(rules);
+    }
+    if (format !== undefined) {
+      updates.push(`format = $${paramCount++}`);
+      values.push(format);
+    }
+    if (description !== undefined) {
+      updates.push(`description = $${paramCount++}`);
+      values.push(description);
+    }
+    if (finalStartDate !== undefined) {
+      updates.push(`start_date = $${paramCount++}`);
+      values.push(finalStartDate);
+    }
+    if (finalEndDate !== undefined) {
+      updates.push(`end_date = $${paramCount++}`);
+      values.push(finalEndDate);
+    }
+    if (finalWebsite !== undefined) {
+      updates.push(`website = $${paramCount++}`);
+      values.push(finalWebsite);
+    }
+    if (finalContactEmail !== undefined) {
+      updates.push(`contact_email = $${paramCount++}`);
+      values.push(finalContactEmail);
+    }
+    if (finalContactPhone !== undefined) {
+      updates.push(`contact_phone = $${paramCount++}`);
+      values.push(finalContactPhone);
     }
 
     updates.push(`updated_at = CURRENT_TIMESTAMP`);
@@ -490,5 +620,237 @@ export const deleteCompetition = async (req: AuthRequest, res: Response): Promis
   } catch (error) {
     console.error('Delete competition error:', error);
     errorResponse(res, 'Failed to delete competition', 500, 'DELETE_COMPETITION_FAILED');
+  }
+};
+
+/**
+ * @swagger
+ * /competitions/{id}/generate-fixtures:
+ *   post:
+ *     summary: Generate fixtures for a competition
+ *     tags: [Competitions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - teamIds
+ *               - format
+ *               - startDate
+ *             properties:
+ *               teamIds:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: uuid
+ *                 description: Array of team IDs to include in fixtures
+ *               format:
+ *                 type: string
+ *                 enum: [round-robin, double-round-robin]
+ *                 description: Fixture format
+ *               startDate:
+ *                 type: string
+ *                 format: date
+ *                 description: Date for first round of fixtures
+ *               matchdays:
+ *                 type: integer
+ *                 description: Number of days between matchdays
+ *     responses:
+ *       200:
+ *         description: Fixtures generated successfully
+ */
+export const generateFixtures = async (req: AuthRequest, res: Response): Promise<void> => {
+  const client = await (await import('../../config/database')).pool.connect();
+
+  try {
+    if (!req.user) {
+      errorResponse(res, 'Unauthorized', 401, 'UNAUTHORIZED');
+      return;
+    }
+
+    const { id } = req.params;
+    const { teamIds, format, startDate, matchdays = 7, venueId } = req.body;
+
+    if (!teamIds || teamIds.length < 2) {
+      errorResponse(res, 'At least 2 teams are required', 400, 'INSUFFICIENT_TEAMS');
+      return;
+    }
+
+    await client.query('BEGIN');
+
+    // Check if competition exists and user has permission
+    const competitionResult = await client.query(
+      'SELECT * FROM competitions WHERE id = $1 AND deleted_at IS NULL',
+      [id]
+    );
+
+    if (competitionResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      errorResponse(res, 'Competition not found', 404, 'COMPETITION_NOT_FOUND');
+      return;
+    }
+
+    const competition = competitionResult.rows[0];
+
+    // TENANT ISOLATION: Check permissions
+    if (req.user.role === UserRole.ASSOCIATION_ADMIN && competition.association_id !== req.user.associationId) {
+      await client.query('ROLLBACK');
+      errorResponse(res, 'You can only generate fixtures for competitions in your association', 403, 'ASSOCIATION_MISMATCH');
+      return;
+    }
+
+    if (req.user.role === UserRole.CLUB_ADMIN || req.user.role === UserRole.TEAM_MANAGER) {
+      await client.query('ROLLBACK');
+      errorResponse(res, 'You do not have permission to generate fixtures', 403, 'INSUFFICIENT_PERMISSIONS');
+      return;
+    }
+
+    // Check if teams exist
+    const teamsResult = await client.query(
+      `SELECT id, name FROM teams WHERE id = ANY($1) AND deleted_at IS NULL`,
+      [teamIds]
+    );
+
+    if (teamsResult.rows.length !== teamIds.length) {
+      await client.query('ROLLBACK');
+      errorResponse(res, 'One or more teams not found', 404, 'TEAMS_NOT_FOUND');
+      return;
+    }
+
+    const teams = teamsResult.rows;
+
+    // Generate fixtures based on format
+    const fixtures = [];
+    const matchDays: any[][][] = [];
+
+    if (format === 'round-robin') {
+      // Single round-robin: each team plays every other team once
+      const n = teams.length;
+
+      // If odd number of teams, add a dummy team (bye)
+      const effectiveTeams = n % 2 === 0 ? teams : [...teams, null];
+      const effectiveN = effectiveTeams.length;
+      const totalRounds = effectiveN - 1;
+
+      for (let round = 0; round < totalRounds; round++) {
+        const roundFixtures: [number, number][] = [];
+
+        for (let match = 0; match < effectiveN / 2; match++) {
+          const home = (round + match) % effectiveN;
+          const away = (effectiveN - 1 - match + round) % effectiveN;
+
+          // Only add fixture if not a dummy team (bye)
+          if (effectiveTeams[home] !== null && effectiveTeams[away] !== null) {
+            roundFixtures.push([home, away]);
+          }
+        }
+
+        if (roundFixtures.length > 0) {
+          matchDays.push(roundFixtures);
+        }
+      }
+    } else if (format === 'double-round-robin') {
+      // Double round-robin: each team plays every other team twice (home and away)
+      const n = teams.length;
+      const effectiveTeams = n % 2 === 0 ? teams : [...teams, null];
+      const effectiveN = effectiveTeams.length;
+      const totalRounds = 2 * (effectiveN - 1);
+
+      for (let round = 0; round < totalRounds; round++) {
+        const roundFixtures: [number, number][] = [];
+        const isSecondHalf = round >= effectiveN - 1;
+
+        for (let match = 0; match < effectiveN / 2; match++) {
+          const home = (round + match) % effectiveN;
+          const away = (effectiveN - 1 - match + round) % effectiveN;
+
+          // Only add fixture if not a dummy team (bye)
+          if (effectiveTeams[home] !== null && effectiveTeams[away] !== null) {
+            if (isSecondHalf) {
+              roundFixtures.push([away, home]); // Swap for second leg
+            } else {
+              roundFixtures.push([home, away]);
+            }
+          }
+        }
+
+        if (roundFixtures.length > 0) {
+          matchDays.push(roundFixtures);
+        }
+      }
+    }
+
+    // Create fixtures from matchdays
+    let matchdayCounter = 1;
+    const startDateObj = new Date(startDate);
+    const n = teams.length;
+    const effectiveTeams = n % 2 === 0 ? teams : [...teams, null];
+
+    for (const roundFixtures of matchDays) {
+      for (const [homeIdx, awayIdx] of roundFixtures) {
+        const homeTeam = effectiveTeams[homeIdx];
+        const awayTeam = effectiveTeams[awayIdx];
+
+        if (!homeTeam || !awayTeam) continue; // Skip dummy teams
+
+        const fixtureId = uuidv4();
+        const fixtureDate = new Date(startDateObj);
+        fixtureDate.setDate(fixtureDate.getDate() + (matchdayCounter - 1) * matchdays);
+
+        const fixtureDateTime = new Date(fixtureDate);
+        fixtureDateTime.setHours(15, 0, 0, 0); // Default to 3:00 PM
+
+        await client.query(
+          `INSERT INTO fixtures (id, competition_id, home_team_id, away_team_id, venue_id, date_time, round, status, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+          [fixtureId, id, homeTeam.id, awayTeam.id, venueId || null, fixtureDateTime.toISOString(), `Matchday ${matchdayCounter}`, 'SCHEDULED']
+        );
+
+        fixtures.push({
+          id: fixtureId,
+          homeTeam: homeTeam.name,
+          awayTeam: awayTeam.name,
+          matchday: matchdayCounter,
+          date: fixtureDate.toISOString().split('T')[0],
+        });
+      }
+      matchdayCounter++;
+    }
+
+    // Log audit
+    await client.query(
+      `INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [uuidv4(), req.user.userId, AuditAction.CREATE, 'FIXTURES', id, JSON.stringify({
+        count: fixtures.length,
+        format,
+        teams: teamIds.length
+      })]
+    );
+
+    await client.query('COMMIT');
+
+    successResponse(res, {
+      fixturesGenerated: fixtures.length,
+      fixtures,
+      matchdays: matchdayCounter - 1,
+    }, 'Fixtures generated successfully');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Generate fixtures error:', error);
+    errorResponse(res, 'Failed to generate fixtures', 500, 'GENERATE_FIXTURES_FAILED');
+  } finally {
+    client.release();
   }
 };

@@ -65,7 +65,71 @@ export enum VenueSurface {
   INDOOR = 'INDOOR',
 }
 
-// Sport Types
+// ============================================================
+// SPORTS SYSTEM TYPES (NEW)
+// ============================================================
+
+// Sport Categories
+export enum SportCategory {
+  TEAM_SPORTS = 'TEAM_SPORTS',
+  RACKET_SPORTS = 'RACKET_SPORTS',
+  AQUATICS = 'AQUATICS',
+  ATHLETICS = 'ATHLETICS',
+  COMBAT_SPORTS = 'COMBAT_SPORTS',
+  INDIVIDUAL = 'INDIVIDUAL',
+  MIND_GAMES = 'MIND_GAMES',
+  MOTOR_SPORTS = 'MOTOR_SPORTS',
+  OTHER = 'OTHER',
+}
+
+// Sport Interface
+export interface Sport {
+  id: string;
+  name: string;
+  slug: string;
+  category: SportCategory;
+  description?: string;
+  icon?: string;
+  is_popular: boolean;
+  is_active: boolean;
+  display_order: number;
+  metadata?: Record<string, any>;
+  created_at: Date;
+  updated_at: Date;
+  deleted_at?: Date;
+}
+
+// Sport Position Interface
+export interface SportPosition {
+  id: string;
+  sport_id: string;
+  name: string;
+  abbreviation?: string;
+  description?: string;
+  display_order: number;
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
+  deleted_at?: Date;
+}
+
+// Player Sport Interface (for multi-sport athletes)
+export interface PlayerSport {
+  id: string;
+  player_id: string;
+  sport_id: string;
+  position_id?: string;
+  is_primary: boolean;
+  jersey_number?: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+// ============================================================
+// LEGACY SPORT TYPE (DEPRECATED)
+// ============================================================
+
+/** @deprecated Use sport_id foreign key instead */
 export enum SportType {
   FOOTBALL = 'FOOTBALL',
   CRICKET = 'CRICKET',
@@ -130,3 +194,52 @@ declare global {
 
 // Type alias for use in controllers
 export type AuthRequest = Request;
+
+// ============================================================
+// SPORTS DTOs (Data Transfer Objects)
+// ============================================================
+
+// Create Sport DTO
+export interface CreateSportDto {
+  name: string;
+  slug?: string;
+  category: SportCategory;
+  description?: string;
+  icon?: string;
+  is_popular?: boolean;
+  is_active?: boolean;
+  display_order?: number;
+  metadata?: Record<string, any>;
+}
+
+// Update Sport DTO
+export interface UpdateSportDto {
+  name?: string;
+  slug?: string;
+  category?: SportCategory;
+  description?: string;
+  icon?: string;
+  is_popular?: boolean;
+  is_active?: boolean;
+  display_order?: number;
+  metadata?: Record<string, any>;
+}
+
+// Create Sport Position DTO
+export interface CreateSportPositionDto {
+  sport_id: string;
+  name: string;
+  abbreviation?: string;
+  description?: string;
+  display_order?: number;
+  is_active?: boolean;
+}
+
+// Update Sport Position DTO
+export interface UpdateSportPositionDto {
+  name?: string;
+  abbreviation?: string;
+  description?: string;
+  display_order?: number;
+  is_active?: boolean;
+}

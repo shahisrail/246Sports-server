@@ -266,8 +266,8 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
 
       const fixturesByStatus = await query(`
         SELECT
-          COUNT(*) FILTER (WHERE status = 'live') as live,
-          COUNT(*) FILTER (WHERE scheduled_date > CURRENT_TIMESTAMP AND status != 'finished') as upcoming
+          COUNT(*) FILTER (WHERE status = 'LIVE') as live,
+          COUNT(*) FILTER (WHERE date_time > CURRENT_TIMESTAMP AND status != 'FINISHED') as upcoming
         FROM fixtures
         WHERE deleted_at IS NULL
       `);
@@ -287,18 +287,19 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
       // Association admin sees only their association's data
       const [clubs, teams, competitions, fixtures, news] = await Promise.all([
         query('SELECT COUNT(*) FROM clubs WHERE association_id = $1 AND deleted_at IS NULL', [userAssociationId]),
-        query('SELECT COUNT(*) FROM teams WHERE association_id = $1 AND deleted_at IS NULL', [userAssociationId]),
+        query('SELECT COUNT(*) FROM teams t JOIN clubs c ON t.club_id = c.id WHERE c.association_id = $1 AND t.deleted_at IS NULL', [userAssociationId]),
         query('SELECT COUNT(*) FROM competitions WHERE association_id = $1 AND deleted_at IS NULL', [userAssociationId]),
-        query('SELECT COUNT(*) FROM fixtures WHERE association_id = $1 AND deleted_at IS NULL', [userAssociationId]),
+        query('SELECT COUNT(*) FROM fixtures f JOIN competitions c ON f.competition_id = c.id WHERE c.association_id = $1 AND f.deleted_at IS NULL', [userAssociationId]),
         query('SELECT COUNT(*) FROM news WHERE association_id = $1 AND deleted_at IS NULL', [userAssociationId]),
       ]);
 
       const fixturesByStatus = await query(`
         SELECT
-          COUNT(*) FILTER (WHERE status = 'live') as live,
-          COUNT(*) FILTER (WHERE scheduled_date > CURRENT_TIMESTAMP AND status != 'finished') as upcoming
-        FROM fixtures
-        WHERE association_id = $1 AND deleted_at IS NULL
+          COUNT(*) FILTER (WHERE f.status = 'LIVE') as live,
+          COUNT(*) FILTER (WHERE f.date_time > CURRENT_TIMESTAMP AND f.status != 'FINISHED') as upcoming
+        FROM fixtures f
+        JOIN competitions c ON f.competition_id = c.id
+        WHERE c.association_id = $1 AND f.deleted_at IS NULL
       `, [userAssociationId]);
 
       stats = {
@@ -321,8 +322,8 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
 
       const fixturesByStatus = await query(`
         SELECT
-          COUNT(*) FILTER (WHERE status = 'live') as live,
-          COUNT(*) FILTER (WHERE scheduled_date > CURRENT_TIMESTAMP AND status != 'finished') as upcoming
+          COUNT(*) FILTER (WHERE status = 'LIVE') as live,
+          COUNT(*) FILTER (WHERE date_time > CURRENT_TIMESTAMP AND status != 'FINISHED') as upcoming
         FROM fixtures
         WHERE (home_team_id IN (SELECT id FROM teams WHERE club_id = $1)
            OR away_team_id IN (SELECT id FROM teams WHERE club_id = $1))

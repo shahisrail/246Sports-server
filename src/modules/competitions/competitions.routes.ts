@@ -38,5 +38,12 @@ router.delete(
   validateUUID('id'),
   competitionsController.deleteCompetition
 );
+router.post(
+  '/:id/generate-fixtures',
+  authenticate,
+  authorize(UserRole.SUPER_ADMIN, UserRole.ASSOCIATION_ADMIN),
+  validateUUID('id'),
+  competitionsController.generateFixtures as any
+);
 
 export default router;

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to 246Sports</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      line-height: 1.6;
+      color: #333333;
+      background-color: #f4f4f4;
+      margin: 0;
+      padding: 20px;
+    }
+    .email-container {
+      max-width: 600px;
+      margin: 0 auto;
+      background-color: #ffffff;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 40px 30px;
+      text-align: center;
+    }
+    .header h1 {
+      color: #ffffff;
+      margin: 0;
+      font-size: 28px;
+      font-weight: 600;
+    }
+    .header p {
+      color: rgba(255, 255, 255, 0.9);
+      margin: 10px 0 0 0;
+      font-size: 16px;
+    }
+    .content {
+      padding: 40px 30px;
+    }
+    .greeting {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 15px;
+      color: #333333;
+    }
+    .message {
+      margin-bottom: 25px;
+      color: #555555;
+    }
+    .button-container {
+      text-align: center;
+      margin: 30px 0;
+    }
+    .button {
+      display: inline-block;
+      padding: 14px 32px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #ffffff;
+      text-decoration: none;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 16px;
+      transition: transform 0.2s;
+    }
+    .button:hover {
+      transform: translateY(-2px);
+    }
+    .feature-box {
+      background-color: #f8f9fa;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 6px;
+    }
+    .feature-box h3 {
+      margin: 0 0 10px 0;
+      color: #333333;
+      font-size: 16px;
+    }
+    .feature-box ul {
+      margin: 0;
+      padding-left: 20px;
+      color: #555555;
+      font-size: 14px;
+    }
+    .feature-box li {
+      margin: 5px 0;
+    }
+    .footer {
+      background-color: #f8f9fa;
+      padding: 30px;
+      text-align: center;
+      color: #6c757d;
+      font-size: 14px;
+    }
+    .footer a {
+      color: #667eea;
+      text-decoration: none;
+    }
+    .footer a:hover {
+      text-decoration: underline;
+    }
+    .logo {
+      font-size: 24px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 5px;
+    }
+    .celebration {
+      font-size: 48px;
+      text-align: center;
+      margin: 20px 0;
+    }
+    @media only screen and (max-width: 600px) {
+      .email-container {
+        width: 100% !important;
+      }
+      .content {
+        padding: 30px 20px !important;
+      }
+      .header {
+        padding: 30px 20px !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="email-container">
+    <!-- Header -->
+    <div class="header">
+      <div class="logo">246Sports</div>
+      <h1>Welcome Aboard!</h1>
+      <p>Your sports management journey begins</p>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+      <div class="celebration">🎉</div>
+
+      <p class="greeting">Hello {{name}},</p>
+
+      <p class="message">
+        Welcome to <strong>246Sports</strong>! We're thrilled to have you and the <strong>{{association_name}}</strong> join our platform.
+      </p>
+
+      <p class="message">
+        Your account has been successfully created and you're ready to start managing your sports operations.
+      </p>
+
+      <div class="feature-box">
+        <h3>What You Can Do:</h3>
+        <ul>
+          <li>📊 Manage your association's competitions and seasons</li>
+          <li>👥 Organize clubs, teams, and players</li>
+          <li>📅 Schedule fixtures and track results</li>
+          <li>🏆 Automatic standings calculation</li>
+          <li>📰 Share news and updates</li>
+        </ul>
+      </div>
+
+      <div class="button-container">
+        <a href="{{login_link}}" class="button">Get Started</a>
+      </div>
+
+      <p class="message">
+        <strong>Your Login Details:</strong><br>
+        Email: {{email}}<br>
+        Role: {{role}}
+      </p>
+
+      <p class="message" style="font-size: 14px; color: #888888;">
+        If you have any questions or need assistance, please don't hesitate to reach out to our support team.
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <p>&copy; 2026 246Sports. All rights reserved.</p>
+      <p>
+        Questions? <a href="{{support_url}}">Contact Support</a>
+      </p>
+      <p style="font-size: 12px; margin-top: 15px;">
+        This email was sent to {{email}} to confirm your account creation on 246Sports.
+      </p>
+    </div>
+  </div>
+</body>
+</html>

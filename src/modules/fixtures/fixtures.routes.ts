@@ -16,8 +16,12 @@ const router = Router();
 // Public routes
 router.get('/', fixturesController.getFixtures);
 router.get('/today', fixturesController.getTodayFixtures);
+router.get('/upcoming', fixturesController.getUpcomingFixtures);
+router.get('/finished', fixturesController.getFinishedFixtures);
 router.get('/:id', validateUUID('id'), fixturesController.getFixtureById);
 router.get('/:id/calendar', validateUUID('id'), fixturesController.getFixtureAsICS);
+router.get('/:id/ics', validateUUID('id'), fixturesController.exportFixtureICS);
+router.get('/:id/directions', validateUUID('id'), fixturesController.getFixtureDirections);
 
 // Protected routes
 router.post(

@@ -22,6 +22,10 @@ import newsRoutes from '../modules/news/news.routes';
 import usersRoutes from '../modules/users/users.routes';
 import mediaRoutes from '../modules/media/media.routes';
 import statsRoutes from '../modules/stats/stats.routes';
+import sportsRoutes from '../modules/sports/sports.routes';
+import emailRoutes from '../modules/email/email.routes';
+import invitationsRoutes from '../modules/invitations/invitations.routes';
+import emailSubscriptionsRoutes from '../modules/email-subscriptions/email-subscriptions.routes';
 
 const router = express.Router();
 
@@ -42,6 +46,7 @@ router.post('/auth/login-v2', loginV2);
 router.post('/auth/revoke-all', revokeAllTokens);
 
 router.use('/users', usersRoutes);
+router.use('/sports', sportsRoutes);
 router.use('/associations', associationsRoutes);
 router.use('/competitions', competitionsRoutes);
 router.use('/fixtures', fixturesRoutes);
@@ -56,5 +61,8 @@ router.use('/search', searchRoutes);
 router.use('/news', newsRoutes);
 router.use('/media', mediaRoutes);
 router.use('/stats', statsRoutes);
+router.use('/email', emailRoutes);
+router.use('/email-subscriptions', emailSubscriptionsRoutes);
+router.use('/invitations', invitationsRoutes);
 
 export default router;

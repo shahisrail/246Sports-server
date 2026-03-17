@@ -4,6 +4,7 @@ import { query } from '../../config/database';
 import { successResponse, errorResponse, paginatedResponse } from '../../utils/responseHandler';
 import { AuthRequest, TeamCategory, Gender, UserRole } from '../../types';
 import { AuditAction } from '../../types';
+import { isValidCloudinaryUrl } from '../../utils/validateCloudinary';
 
 /**
  * @swagger
@@ -413,6 +414,7 @@ export const createTeam = async (req: AuthRequest, res: Response): Promise<void>
       return;
     }
 
+    // Extract all fields (support both camelCase and snake_case)
     const {
       name,
       club_id,
@@ -421,23 +423,105 @@ export const createTeam = async (req: AuthRequest, res: Response): Promise<void>
       competitionId,
       category = TeamCategory.SENIOR,
       gender = Gender.MALE,
+      abbreviation,
       logo,
       coach_name,
       coachName,
+      founded_year,
+      foundedYear,
+      colors,
+      description,
+      website,
+      websiteUrl,
+      contact_email,
+      contactEmail,
+      contact_phone,
+      contactPhone,
     } = req.body;
 
     // Support both camelCase and snake_case
     const finalClubId = clubId || club_id;
     const finalCompetitionId = competitionId || competition_id;
     const finalCoachName = coachName || coach_name;
+    const finalFoundedYear = foundedYear || founded_year;
+    const finalWebsite = website || websiteUrl;
+    const finalContactEmail = contact_email || contactEmail;
+    const finalContactPhone = contact_phone || contactPhone;
+
+    // Validate required fields
+    if (!name) {
+      errorResponse(res, 'Team name is required', 400, 'VALIDATION_ERROR');
+      return;
+    }
+
+    if (!finalClubId) {
+      errorResponse(res, 'Club ID is required', 400, 'VALIDATION_ERROR');
+      return;
+    }
+
+    // TENANT ISOLATION: Validate club access
+    if (req.user.role === UserRole.ASSOCIATION_ADMIN && req.user.associationId) {
+      // Verify club belongs to user's association
+      const clubResult = await query(
+        'SELECT association_id FROM clubs WHERE id = $1 AND deleted_at IS NULL',
+        [finalClubId]
+      );
+
+      if (clubResult.rows.length === 0) {
+        errorResponse(res, 'Club not found', 404, 'CLUB_NOT_FOUND');
+        return;
+      }
+
+      if (clubResult.rows[0].association_id !== req.user.associationId) {
+        errorResponse(res, 'You can only create teams for clubs in your association', 403, 'ASSOCIATION_MISMATCH');
+        return;
+      }
+    }
+
+    // Club admins and team managers cannot create teams
+    if (req.user.role === UserRole.TEAM_MANAGER) {
+      errorResponse(res, 'You do not have permission to create teams', 403, 'INSUFFICIENT_PERMISSIONS');
+      return;
+    }
 
     const teamId = uuidv4();
 
+    // Validate logo URL if provided
+    if (logo && !logo.startsWith('blob:')) {
+      if (!isValidCloudinaryUrl(logo)) {
+        errorResponse(res, 'Invalid logo URL. Only Cloudinary URLs are allowed', 400, 'INVALID_LOGO_URL');
+        return;
+      }
+    }
+
+    const insertValues = [
+      teamId,
+      name,
+      finalClubId,
+      finalCompetitionId || null,
+      category,
+      gender,
+      abbreviation || null,
+      logo !== undefined ? logo : null,
+      finalCoachName || null,
+      finalFoundedYear !== undefined ? finalFoundedYear : null,
+      colors !== undefined ? colors : null,
+      description !== undefined ? description : null,
+      finalWebsite !== undefined ? finalWebsite : null,
+      finalContactEmail !== undefined ? finalContactEmail : null,
+      finalContactPhone !== undefined ? finalContactPhone : null,
+    ];
+
+    console.log('INSERT VALUES:', insertValues);
+
     const result = await query(
-      `INSERT INTO teams (id, name, club_id, competition_id, category, gender, logo, coach_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO teams (
+        id, name, club_id, competition_id, category, gender, abbreviation, logo, coach_name,
+        founded_year, colors, description, website, contact_email, contact_phone
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        RETURNING *`,
-      [teamId, name, finalClubId, finalCompetitionId, category, gender, logo || null, finalCoachName || null]
+      insertValues
     );
 
     // Log audit
@@ -450,7 +534,8 @@ export const createTeam = async (req: AuthRequest, res: Response): Promise<void>
     successResponse(res, result.rows[0], 'Team created successfully', 201);
   } catch (error) {
     console.error('Create team error:', error);
-    errorResponse(res, 'Failed to create team', 500, 'CREATE_TEAM_FAILED');
+    const errorMessage = error instanceof Error ? error.message : 'Failed to create team';
+    errorResponse(res, errorMessage, 500, 'CREATE_TEAM_FAILED');
   }
 };
 

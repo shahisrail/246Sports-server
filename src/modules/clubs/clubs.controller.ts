@@ -415,11 +415,12 @@ export const getClubById = async (req: AuthRequest, res: Response): Promise<void
       [id]
     );
 
-    // Get players count for this club
+    // Get players count for this club (through teams)
     const playerCountResult = await query(
       `SELECT COUNT(*) as count
-       FROM players
-       WHERE club_id = $1 AND deleted_at IS NULL`,
+       FROM players p
+       JOIN teams t ON p.team_id = t.id
+       WHERE t.club_id = $1 AND p.deleted_at IS NULL`,
       [id]
     );
 

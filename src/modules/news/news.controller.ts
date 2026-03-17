@@ -46,8 +46,11 @@ import { logger, auditLogger } from '../../utils/logger';
  */
 export const getNews = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { page = 1, limit = 10, association_id, status = 'PUBLISHED' } = req.query;
+    const { page = 1, limit = 10, association_id, sport_id, sport, status = 'PUBLISHED' } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
+
+    // Support both sport_id (new) and sport (legacy for backward compatibility)
+    const sportFilter = sport_id || sport;
 
     let queryText = `
       SELECT
@@ -58,7 +61,9 @@ export const getNews = async (req: AuthRequest, res: Response): Promise<void> =>
         n.excerpt,
         n.content,
         n.featured_image as "featuredImageUrl",
-        n.sport,
+        n.sport_id_new as "sportId",
+        s.name as sport_name,
+        s.slug as sport_slug,
         n.category,
         n.status,
         n.published_at as "publishedAt",
@@ -73,6 +78,7 @@ export const getNews = async (req: AuthRequest, res: Response): Promise<void> =>
       FROM news n
       LEFT JOIN associations a ON n.association_id = a.id
       LEFT JOIN users u ON n.created_by = u.id
+      LEFT JOIN sports s ON n.sport_id_new = s.id
       WHERE n.deleted_at IS NULL
     `;
     const params: any[] = [];
@@ -92,6 +98,17 @@ export const getNews = async (req: AuthRequest, res: Response): Promise<void> =>
     if (association_id) {
       queryText += ` AND n.association_id = $${params.length + 1}`;
       params.push(association_id);
+    }
+    if (sportFilter) {
+      // Use sport_id if provided, otherwise try to match by sport name (backward compatibility)
+      if (sport_id) {
+        queryText += ` AND n.sport_id_new = $${params.length + 1}`;
+        params.push(sportFilter);
+      } else {
+        // Legacy: filter by sport slug
+        queryText += ` AND s.slug = $${params.length + 1}`;
+        params.push(sportFilter);
+      }
     }
     if (status) {
       queryText += ` AND n.status = $${params.length + 1}`;

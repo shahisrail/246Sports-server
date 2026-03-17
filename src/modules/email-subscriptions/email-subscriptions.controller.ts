@@ -1,0 +1,390 @@
+import { Response } from 'express';
+import { v4 as uuidv4 } from 'uuid';
+import { query } from '../../config/database';
+import { successResponse, errorResponse } from '../../utils/responseHandler';
+import { AuthRequest, UserRole } from '../../types';
+import { AuditAction } from '../../types';
+
+/**
+ * @swagger
+ * /email-subscriptions/subscribe:
+ *   post:
+ *     summary: Subscribe to association updates
+ *     tags: [Email Subscriptions]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - association_id
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: "user@example.com"
+ *               association_id:
+ *                 type: string
+ *                 format: uuid
+ *                 example: "123e4567-e89b-12d3-a456-426614174000"
+ *               preferences:
+ *                 type: object
+ *                 properties:
+ *                   news:
+ *                     type: boolean
+ *                     default: true
+ *                   fixtures:
+ *                     type: boolean
+ *                     default: true
+ *                   results:
+ *                     type: boolean
+ *                     default: true
+ *     responses:
+ *       201:
+ *         description: Subscribed successfully
+ *       409:
+ *         description: Already subscribed
+ *       400:
+ *         description: Invalid email or missing required fields
+ */
+export const subscribe = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  const client = await (await import('../../config/database')).pool.connect();
+
+  try {
+    const { email, association_id, preferences } = req.body;
+
+    // Validation
+    if (!email || !association_id) {
+      errorResponse(res, 'Email and association_id are required', 400, 'MISSING_FIELDS');
+      return;
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      errorResponse(res, 'Invalid email format', 400, 'INVALID_EMAIL');
+      return;
+    }
+
+    // Validate association_id is UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(association_id)) {
+      errorResponse(res, 'Invalid association_id format', 400, 'INVALID_ASSOCOCIATION_ID');
+      return;
+    }
+
+    // Check if association exists
+    const associationCheck = await client.query(
+      'SELECT id, name FROM associations WHERE id = $1 AND deleted_at IS NULL',
+      [association_id]
+    );
+
+    if (associationCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
+      errorResponse(res, 'Association not found', 404, 'ASSOCIATION_NOT_FOUND');
+      return;
+    }
+
+    await client.query('BEGIN');
+
+    // Check if already subscribed
+    const existing = await client.query(
+      `SELECT id, status FROM email_subscriptions
+       WHERE LOWER(email) = LOWER($1) AND association_id = $2 AND deleted_at IS NULL`,
+      [email, association_id]
+    );
+
+    if (existing.rows.length > 0) {
+      const subscription = existing.rows[0];
+
+      if (subscription.status === 'ACTIVE') {
+        await client.query('ROLLBACK');
+        errorResponse(res, 'Already subscribed to this association', 409, 'ALREADY_SUBSCRIBED');
+        return;
+      }
+
+      // Reactivate if unsubscribed
+      await client.query(
+        `UPDATE email_subscriptions
+         SET status = 'ACTIVE', unsubscribed_at = NULL, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1`,
+        [subscription.id]
+      );
+    } else {
+      // Create new subscription
+      const subscriptionId = uuidv4();
+      const unsubscribeToken = uuidv4();
+
+      await client.query(
+        `INSERT INTO email_subscriptions (id, email, association_id, unsubscribe_token, preferences)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          subscriptionId,
+          email.toLowerCase(),
+          association_id,
+          unsubscribeToken,
+          JSON.stringify(preferences || { news: true, fixtures: true, results: true }),
+        ]
+      );
+
+      // Log audit if user is authenticated
+      if (req.user) {
+        await client.query(
+          `INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            uuidv4(),
+            req.user.userId,
+            AuditAction.CREATE,
+            'EMAIL_SUBSCRIPTION',
+            subscriptionId,
+            JSON.stringify({ email, association_id }),
+          ]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+
+    successResponse(
+      res,
+      {
+        message: 'Successfully subscribed',
+        association: associationCheck.rows[0].name,
+      },
+      'Subscribed successfully',
+      201
+    );
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Subscribe error:', error);
+    errorResponse(res, 'Failed to subscribe', 500, 'SUBSCRIBE_FAILED');
+  } finally {
+    client.release();
+  }
+};
+
+/**
+ * @swagger
+ * /email-subscriptions/unsubscribe:
+ *   post:
+ *     summary: Unsubscribe from association updates
+ *     tags: [Email Subscriptions]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 format: uuid
+ *                 description: Unsubscribe token received when subscribed
+ *     responses:
+ *       200:
+ *         description: Unsubscribed successfully
+ *       404:
+ *         description: Invalid or expired unsubscribe token
+ */
+export const unsubscribe = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      errorResponse(res, 'Unsubscribe token is required', 400, 'MISSING_TOKEN');
+      return;
+    }
+
+    // Use database function for unsubscribe
+    const result = await query(
+      `SELECT unsubscribe_by_token($1) as success`,
+      [token]
+    );
+
+    const success = result.rows[0].success;
+
+    if (!success) {
+      errorResponse(res, 'Invalid or expired unsubscribe token', 404, 'INVALID_TOKEN');
+      return;
+    }
+
+    successResponse(res, { message: 'Successfully unsubscribed' }, 'Unsubscribed successfully');
+  } catch (error) {
+    console.error('Unsubscribe error:', error);
+    errorResponse(res, 'Failed to unsubscribe', 500, 'UNSUBSCRIBE_FAILED');
+  }
+};
+
+/**
+ * @swagger
+ * /email-subscriptions/status:
+ *   get:
+ *     summary: Get subscription status for an email and association
+ *     tags: [Email Subscriptions]
+ *     parameters:
+ *       - in: query
+ *         name: email
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: email
+ *       - in: query
+ *         name: association_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Subscription status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 subscribed:
+ *                   type: boolean
+ *                 status:
+ *                   type: string
+ *                   enum: [ACTIVE, UNSUBSCRIBED, BOUNCED]
+ *                 preferences:
+ *                   type: object
+ *                 subscriptionDate:
+ *                   type: string
+ *                   format: date-time
+ */
+export const getSubscriptionStatus = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { email, association_id } = req.query;
+
+    if (!email || !association_id) {
+      errorResponse(res, 'Email and association_id are required', 400, 'MISSING_FIELDS');
+      return;
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.toString())) {
+      errorResponse(res, 'Invalid email format', 400, 'INVALID_EMAIL');
+      return;
+    }
+
+    // Use database function to check subscription status
+    const isSubscribed = await query(
+      `SELECT is_subscribed_to_association($1, $2) as subscribed`,
+      [email, association_id]
+    );
+
+    const subscribed = isSubscribed.rows[0].subscribed;
+
+    if (!subscribed) {
+      successResponse(res, { subscribed: false }, 'Not subscribed');
+      return;
+    }
+
+    // Get full subscription details
+    const result = await query(
+      `SELECT status, preferences, subscription_date
+       FROM email_subscriptions
+       WHERE LOWER(email) = LOWER($1) AND association_id = $2 AND deleted_at IS NULL`,
+      [email, association_id]
+    );
+
+    if (result.rows.length === 0) {
+      successResponse(res, { subscribed: false }, 'Not subscribed');
+      return;
+    }
+
+    const subscription = result.rows[0];
+
+    successResponse(
+      res,
+      {
+        subscribed: subscription.status === 'ACTIVE',
+        status: subscription.status,
+        preferences: subscription.preferences,
+        subscriptionDate: subscription.subscription_date,
+      },
+      'Subscription status retrieved'
+    );
+  } catch (error) {
+    console.error('Get subscription status error:', error);
+    errorResponse(res, 'Failed to get subscription status', 500, 'GET_STATUS_FAILED');
+  }
+};
+
+/**
+ * @swagger
+ * /email-subscriptions/association/{associationId}:
+ *   get:
+ *     summary: Get all subscribers for an association (admin only)
+ *     tags: [Email Subscriptions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: associationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: List of subscribers
+ *       403:
+ *         description: Forbidden - not authorized
+ */
+export const getAssociationSubscribers = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { associationId } = req.params;
+
+    // Authorization check
+    if (!req.user) {
+      errorResponse(res, 'Authentication required', 401, 'UNAUTHORIZED');
+      return;
+    }
+
+    // Only SUPER_ADMIN and ASSOCIATION_ADMIN can access
+    if (req.user.role !== UserRole.SUPER_ADMIN &&
+        (req.user.role !== UserRole.ASSOCIATION_ADMIN || req.user.associationId !== associationId)) {
+      errorResponse(res, 'You do not have permission to view subscribers for this association', 403, 'FORBIDDEN');
+      return;
+    }
+
+    // Use database function to get subscribers
+    const result = await query(
+      `SELECT * FROM get_association_subscribers($1)`,
+      [associationId]
+    );
+
+    successResponse(
+      res,
+      {
+        associationId,
+        subscriberCount: result.rows.length,
+        subscribers: result.rows,
+      },
+      'Subscribers retrieved successfully'
+    );
+  } catch (error) {
+    console.error('Get association subscribers error:', error);
+    errorResponse(res, 'Failed to get subscribers', 500, 'GET_SUBSCRIBERS_FAILED');
+  }
+};

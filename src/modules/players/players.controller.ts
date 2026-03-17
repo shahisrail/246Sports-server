@@ -191,6 +191,8 @@ export const createPlayer = async (req: AuthRequest, res: Response): Promise<voi
 
     const {
       name,
+      first_name,
+      last_name,
       team_id,
       photo,
       position,
@@ -203,6 +205,14 @@ export const createPlayer = async (req: AuthRequest, res: Response): Promise<voi
       is_active = true,
     } = req.body;
 
+    // Combine first_name and last_name into name if name is not provided
+    const playerName = name || `${first_name || ''} ${last_name || ''}`.trim();
+
+    if (!playerName) {
+      errorResponse(res, 'Name is required', 400, 'NAME_REQUIRED');
+      return;
+    }
+
     const playerId = uuidv4();
 
     const result = await query(
@@ -211,7 +221,7 @@ export const createPlayer = async (req: AuthRequest, res: Response): Promise<voi
        RETURNING *`,
       [
         playerId,
-        name,
+        playerName,
         team_id,
         photo || null,
         position || null,
@@ -229,7 +239,7 @@ export const createPlayer = async (req: AuthRequest, res: Response): Promise<voi
     await query(
       `INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [uuidv4(), req.user.userId, AuditAction.CREATE, 'PLAYER', playerId, JSON.stringify({ name, team_id })]
+      [uuidv4(), req.user.userId, AuditAction.CREATE, 'PLAYER', playerId, JSON.stringify({ name: playerName, team_id })]
     );
 
     successResponse(res, result.rows[0], 'Player created successfully', 201);
