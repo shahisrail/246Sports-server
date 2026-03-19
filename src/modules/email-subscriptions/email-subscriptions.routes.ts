@@ -19,6 +19,13 @@ router.get('/status', emailSubscriptionsController.getSubscriptionStatus);
 
 // Protected routes (require authentication)
 router.get(
+  '/',
+  authenticate,
+  authorize(UserRole.SUPER_ADMIN),
+  emailSubscriptionsController.getAllSubscribers
+);
+
+router.get(
   '/association/:associationId',
   authenticate,
   authorize(UserRole.SUPER_ADMIN, UserRole.ASSOCIATION_ADMIN),

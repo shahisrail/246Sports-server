@@ -44,7 +44,7 @@ export const submitResult = async (req: AuthRequest, res: Response): Promise<voi
       return;
     }
 
-    const { fixture_id, home_score, away_score } = req.body;
+    const { fixture_id, home_score, away_score, goals, stats } = req.body;
 
     await client.query('BEGIN');
 
@@ -71,27 +71,75 @@ export const submitResult = async (req: AuthRequest, res: Response): Promise<voi
       [fixture_id]
     );
 
+    let result;
     if (existingResult.rows.length > 0) {
-      await client.query('ROLLBACK');
-      errorResponse(res, 'Result already exists for this fixture', 409, 'RESULT_EXISTS');
-      return;
+      // Update existing result
+      const existingId = existingResult.rows[0].id;
+      result = await client.query(
+        `UPDATE results SET home_score = $1, away_score = $2, status = $3, submitted_by = $4, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $5
+         RETURNING *`,
+        [home_score, away_score, ResultStatus.SUBMITTED, req.user.userId, existingId]
+      );
+    } else {
+      // Create new result
+      const resultId = uuidv4();
+      result = await client.query(
+        `INSERT INTO results (id, fixture_id, home_score, away_score, status, submitted_by)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING *`,
+        [resultId, fixture_id, home_score, away_score, ResultStatus.SUBMITTED, req.user.userId]
+      );
     }
 
-    const resultId = uuidv4();
-
-    // Create result
-    const result = await client.query(
-      `INSERT INTO results (id, fixture_id, home_score, away_score, status, submitted_by)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING *`,
-      [resultId, fixture_id, home_score, away_score, ResultStatus.SUBMITTED, req.user.userId]
+    // Update fixture status to FINISHED
+    await client.query(
+      `UPDATE fixtures SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      ['FINISHED', fixture_id]
     );
+
+    // Trigger standings recalculation for the competition
+    try {
+      const fixtureInfo = await client.query(
+        'SELECT competition_id FROM fixtures WHERE id = $1',
+        [fixture_id]
+      );
+
+      if (fixtureInfo.rows.length > 0) {
+        const competitionId = fixtureInfo.rows[0].competition_id;
+
+        // Recalculate standings
+        await recalculateCompetitionStandings(client, competitionId);
+      }
+    } catch (standingsError) {
+      console.error('Failed to recalculate standings:', standingsError);
+      // Don't fail the result submission if standings calculation fails
+    }
+
+    // Store goals as JSON if provided
+    if (goals && (goals.home || goals.away)) {
+      const allGoals = [...(goals.home || []), ...(goals.away || [])];
+      if (allGoals.length > 0) {
+        await client.query(
+          `UPDATE results SET goals = $1 WHERE id = $2`,
+          [JSON.stringify(allGoals), result.rows[0].id]
+        );
+      }
+    }
+
+    // Store match stats as JSON if provided
+    if (stats) {
+      await client.query(
+        `UPDATE results SET match_stats = $1 WHERE id = $2`,
+        [JSON.stringify(stats), result.rows[0].id]
+      );
+    }
 
     // Log audit
     await client.query(
       `INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [uuidv4(), req.user.userId, AuditAction.CREATE, 'RESULT', resultId, JSON.stringify({ fixture_id, home_score, away_score })]
+      [uuidv4(), req.user.userId, AuditAction.CREATE, 'RESULT', result.rows[0].id, JSON.stringify({ fixture_id, home_score, away_score })]
     );
 
     await client.query('COMMIT');
@@ -442,3 +490,85 @@ export const getResultByFixtureId = async (req: AuthRequest, res: Response): Pro
     errorResponse(res, 'Failed to get result', 500, 'GET_RESULT_FAILED');
   }
 };
+
+/**
+ * Helper function to recalculate standings for a competition
+ * Processes all published and confirmed results
+ */
+async function recalculateCompetitionStandings(client: any, competitionId: string): Promise<void> {
+  try {
+    // Get competition info
+    const competitionResult = await client.query(
+      'SELECT points_win, points_draw, points_loss FROM competitions WHERE id = $1',
+      [competitionId]
+    );
+
+    if (competitionResult.rows.length === 0) {
+      console.log('Competition not found for standings calculation');
+      return;
+    }
+
+    const competition = competitionResult.rows[0];
+
+    // Get all results for this competition (both PUBLISHED and CONFIRMED)
+    const resultsResult = await client.query(
+      `SELECT r.*, f.home_team_id, f.away_team_id
+       FROM results r
+       LEFT JOIN fixtures f ON r.fixture_id = f.id
+       WHERE f.competition_id = $1 AND r.status IN ('PUBLISHED', 'CONFIRMED')
+       ORDER BY r.created_at ASC`,
+      [competitionId]
+    );
+
+    // Delete existing standings
+    await client.query(
+      'DELETE FROM standings WHERE competition_id = $1',
+      [competitionId]
+    );
+
+    // Get all teams in competition
+    const teamsResult = await client.query(
+      `SELECT DISTINCT t.id
+       FROM teams t
+       WHERE t.competition_id = $1`,
+      [competitionId]
+    );
+
+    // Initialize standings for all teams
+    for (const team of teamsResult.rows) {
+      await client.query(
+        `INSERT INTO standings (id, competition_id, team_id, played, won, drawn, lost, goals_for, goals_against, goal_difference, points)
+         VALUES ($1, $2, $3, 0, 0, 0, 0, 0, 0, 0, 0)`,
+        [require('uuid').v4(), String(competitionId), team.id]
+      );
+    }
+
+    // Process each result
+    for (const result of resultsResult.rows) {
+      await updateTeamStandings(
+        client,
+        result.home_team_id,
+        String(competitionId),
+        result,
+        competition.points_win || 3,
+        competition.points_draw || 1,
+        competition.points_loss || 0
+      );
+
+      await updateTeamStandings(
+        client,
+        result.away_team_id,
+        String(competitionId),
+        result,
+        competition.points_win || 3,
+        competition.points_draw || 1,
+        competition.points_loss || 0
+      );
+    }
+
+    console.log(`Standings recalculated for competition ${competitionId}`);
+  } catch (error) {
+    console.error('Recalculate standings error:', error);
+    throw error;
+  }
+}

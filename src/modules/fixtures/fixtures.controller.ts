@@ -415,6 +415,8 @@ export const createFixture = async (req: AuthRequest, res: Response): Promise<vo
       stream_url,
       streamUrl,
       status,
+      homeScore,
+      awayScore,
     } = req.body;
 
     // Support both camelCase and snake_case
@@ -442,6 +444,8 @@ export const createFixture = async (req: AuthRequest, res: Response): Promise<vo
       finalRound,
       finalStreamUrl,
       status,
+      homeScore,
+      awayScore,
     });
 
     // Validate required fields
@@ -465,33 +469,79 @@ export const createFixture = async (req: AuthRequest, res: Response): Promise<vo
       }
     }
 
-    const fixtureId = uuidv4();
+    // Start transaction for fixture + optional result creation
+    await query('BEGIN');
 
-    const result = await query(
-      `INSERT INTO fixtures (id, competition_id, home_team_id, away_team_id, venue_id, date_time, round, stream_url, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       RETURNING *`,
-      [
-        fixtureId,
-        finalCompetitionId,
-        finalHomeTeamId,
-        finalAwayTeamId,
-        finalVenueId || null,
-        finalDateTime || null,
-        finalRound || null,
-        finalStreamUrl || null,
-        status || FixtureStatus.SCHEDULED,
-      ]
-    );
+    try {
+      const fixtureId = uuidv4();
 
-    // Log audit
-    await query(
-      `INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [uuidv4(), req.user.userId, AuditAction.CREATE, 'FIXTURE', fixtureId, JSON.stringify({ finalCompetitionId, finalDateTime })]
-    );
+      await query(
+        `INSERT INTO fixtures (id, competition_id, home_team_id, away_team_id, venue_id, date_time, round, stream_url, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING *`,
+        [
+          fixtureId,
+          finalCompetitionId,
+          finalHomeTeamId,
+          finalAwayTeamId,
+          finalVenueId || null,
+          finalDateTime || null,
+          finalRound || null,
+          finalStreamUrl || null,
+          status || FixtureStatus.SCHEDULED,
+        ]
+      );
 
-    successResponse(res, result.rows[0], 'Fixture created successfully', 201);
+      // Handle scores - create result record if scores are provided
+      if (homeScore !== undefined && awayScore !== undefined) {
+        const resultId = uuidv4();
+        await query(
+          `INSERT INTO results (id, fixture_id, home_score, away_score, status, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, 'SUBMITTED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+          [resultId, fixtureId, homeScore, awayScore]
+        );
+      }
+
+      // Log audit
+      await query(
+        `INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [uuidv4(), req.user.userId, AuditAction.CREATE, 'FIXTURE', fixtureId, JSON.stringify({
+          finalCompetitionId,
+          finalDateTime,
+          homeScore,
+          awayScore,
+          status
+        })]
+      );
+
+      await query('COMMIT');
+
+      // Get fixture with result for response
+      const fixtureWithResult = await query(
+        `SELECT
+          f.*,
+          c.name as competition_name,
+          ht.name as home_team_name,
+          at.name as away_team_name,
+          v.name as venue_name,
+          r.home_score,
+          r.away_score
+        FROM fixtures f
+        LEFT JOIN competitions c ON f.competition_id = c.id
+        LEFT JOIN teams ht ON f.home_team_id = ht.id
+        LEFT JOIN teams at ON f.away_team_id = at.id
+        LEFT JOIN venues v ON f.venue_id = v.id
+        LEFT JOIN results r ON f.id = r.fixture_id
+        WHERE f.id = $1`,
+        [fixtureId]
+      );
+
+      successResponse(res, fixtureWithResult.rows[0], 'Fixture created successfully', 201);
+    } catch (error) {
+      await query('ROLLBACK');
+      throw error;
+    }
   } catch (error) {
     console.error('Create fixture error:', error);
     errorResponse(res, 'Failed to create fixture', 500, 'CREATE_FIXTURE_FAILED');

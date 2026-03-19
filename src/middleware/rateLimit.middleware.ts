@@ -1,9 +1,44 @@
 import rateLimit from 'express-rate-limit';
+import { UserRole } from '../types';
+import { verifyToken } from '../utils/jwt';
 
 /**
  * Rate Limiting Middleware
  * Protects against brute force attacks and API abuse
  */
+
+// Helper function to check if user is admin
+const isAdmin = (req: any): boolean => {
+  // First check if req.user is already set (by auth middleware)
+  if (req.user) {
+    return [
+      UserRole.SUPER_ADMIN,
+      UserRole.ASSOCIATION_ADMIN,
+      UserRole.CLUB_ADMIN
+    ].includes(req.user.role);
+  }
+
+  // If no req.user, check the Authorization header directly
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return false;
+  }
+
+  try {
+    const token = authHeader.substring(7);
+    const payload = verifyToken(token);
+
+    // Check if the user has an admin role
+    return [
+      UserRole.SUPER_ADMIN,
+      UserRole.ASSOCIATION_ADMIN,
+      UserRole.CLUB_ADMIN
+    ].includes(payload.role);
+  } catch (error) {
+    // Invalid token - don't skip rate limiting
+    return false;
+  }
+};
 
 // General API rate limit
 export const apiRateLimit = rateLimit({
@@ -16,6 +51,10 @@ export const apiRateLimit = rateLimit({
   },
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  skip: (req: any) => {
+    // Skip rate limiting for admin users
+    return isAdmin(req);
+  },
   keyGenerator: (req: any) => {
     // Use IP + user ID for authenticated users
     return req.user?.userId
@@ -49,6 +88,10 @@ export const writeRateLimit = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req: any) => {
+    // Skip rate limiting for admin users
+    return isAdmin(req);
+  },
 });
 
 // Search rate limit
@@ -62,6 +105,10 @@ export const searchRateLimit = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req: any) => {
+    // Skip rate limiting for admin users
+    return isAdmin(req);
+  },
 });
 
 // Public API rate limit (for unauthenticated requests)

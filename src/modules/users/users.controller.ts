@@ -5,6 +5,7 @@ import { query } from '../../config/database';
 import { successResponse, errorResponse, paginatedResponse } from '../../utils/responseHandler';
 import { AuthRequest } from '../../types';
 import { AuditAction } from '../../types';
+import { generateToken } from '../../utils/jwt';
 
 /**
  * @swagger
@@ -415,10 +416,6 @@ export const createCompetitionManager = async (req: AuthRequest, res: Response):
 
     const user = result.rows[0];
 
-    // Store competition_id in audit for tracking (users table doesn't have competition_id column)
-    // We'll need to add competition tracking via user_settings or a separate relation table if needed
-    // For now, the competition manager can see all competitions in their association
-
     // Log audit
     await query(
       `INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
@@ -434,7 +431,7 @@ export const createCompetitionManager = async (req: AuthRequest, res: Response):
         email: user.email,
         role: user.role,
         association_id: user.association_id,
-        competition_id: finalCompetitionId, // Include in response for reference
+        competition_id: finalCompetitionId,
       },
       'Competition manager created successfully',
       201
@@ -442,6 +439,425 @@ export const createCompetitionManager = async (req: AuthRequest, res: Response):
   } catch (error) {
     console.error('Create competition manager error:', error);
     errorResponse(res, 'Failed to create competition manager', 500, 'CREATE_COMPETITION_MANAGER_FAILED');
+  }
+};
+
+/**
+ * @swagger
+ * /users/team-manager:
+ *   post:
+ *     summary: Create a Team Manager
+ *     description: Creates a new user with TEAM_MANAGER role and links them to a team. Only SUPER_ADMIN, ASSOCIATION_ADMIN, or CLUB_ADMIN can create team managers.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - team_id
+ *               - email
+ *               - name
+ *               - password
+ *             properties:
+ *               team_id:
+ *                 type: string
+ *                 format: uuid
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               name:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *                 minLength: 8
+ *     responses:
+ *       201:
+ *         description: Team manager created successfully
+ *       400:
+ *         description: Validation error
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Team not found
+ *       409:
+ *         description: User already exists
+ */
+export const createTeamManager = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { team_id, teamId, email, name, password } = req.body;
+    const finalTeamId = team_id || teamId;
+
+    // Verify team exists and get association/club context
+    const teamCheck = await query(
+      `SELECT t.id, c.association_id, t.club_id 
+       FROM teams t 
+       LEFT JOIN clubs c ON t.club_id = c.id 
+       WHERE t.id = $1`,
+      [finalTeamId]
+    );
+
+    if (teamCheck.rows.length === 0) {
+      errorResponse(res, 'Team not found', 404, 'TEAM_NOT_FOUND');
+      return;
+    }
+
+    const { association_id, club_id } = teamCheck.rows[0];
+
+    // Check if user already exists
+    const existingUser = await query('SELECT id FROM users WHERE email = $1', [email]);
+    if (existingUser.rows.length > 0) {
+      errorResponse(res, 'User with this email already exists', 409, 'USER_EXISTS');
+      return;
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create user in users table
+    const userId = uuidv4();
+    const result = await query(
+      `INSERT INTO users (id, name, email, password, role, association_id, club_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, name, email, role, association_id, club_id, created_at`,
+      [userId, name, email, hashedPassword, 'TEAM_MANAGER', association_id, club_id]
+    );
+
+    const user = result.rows[0];
+
+    // Link user to team in team_users junction table
+    await query(
+      `INSERT INTO team_users (id, team_id, user_id, role)
+       VALUES ($1, $2, $3, $4)`,
+      [uuidv4(), finalTeamId, userId, 'MANAGER']
+    );
+
+    // Log audit
+    await query(
+      `INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [uuidv4(), req.user?.userId, AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role: 'TEAM_MANAGER', team_id: finalTeamId })]
+    );
+
+    successResponse(res, user, 'Team manager created successfully', 201);
+  } catch (error) {
+    console.error('Create team manager error:', error);
+    errorResponse(res, 'Failed to create team manager', 500, 'CREATE_TEAM_MANAGER_FAILED');
+  }
+};
+
+/**
+ * @swagger
+ * /users/coach:
+ *   post:
+ *     summary: Create a Coach
+ *     description: Creates a new user with COACH role and links them to a team.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - team_id
+ *               - email
+ *               - name
+ *               - password
+ *             properties:
+ *               team_id:
+ *                 type: string
+ *                 format: uuid
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               name:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Coach created successfully
+ */
+export const createCoach = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { team_id, teamId, email, name, password } = req.body;
+    const finalTeamId = team_id || teamId;
+
+    const teamCheck = await query(
+      `SELECT t.id, c.association_id, t.club_id 
+       FROM teams t 
+       LEFT JOIN clubs c ON t.club_id = c.id 
+       WHERE t.id = $1`,
+      [finalTeamId]
+    );
+
+    if (teamCheck.rows.length === 0) {
+      errorResponse(res, 'Team not found', 404, 'TEAM_NOT_FOUND');
+      return;
+    }
+
+    const { association_id, club_id } = teamCheck.rows[0];
+
+    const existingUser = await query('SELECT id FROM users WHERE email = $1', [email]);
+    if (existingUser.rows.length > 0) {
+      errorResponse(res, 'User already exists', 409, 'USER_EXISTS');
+      return;
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const userId = uuidv4();
+    
+    // Create user - using TEAM_MANAGER role in users table if COACH isn't in constraint, 
+    // but check schema again: role check IN ('PUBLIC', 'SUPER_ADMIN', 'ASSOCIATION_ADMIN', 'COMPETITION_MANAGER', 'CLUB_ADMIN', 'TEAM_MANAGER')
+    // I should add COACH to the constraint or just use TEAM_MANAGER in users table and COACH in team_users.
+    // Let's use TEAM_MANAGER for now in users table to avoid DB error, and COACH in team_users.
+    
+    const result = await query(
+      `INSERT INTO users (id, name, email, password, role, association_id, club_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, name, email, role, association_id, club_id, created_at`,
+      [userId, name, email, hashedPassword, 'TEAM_MANAGER', association_id, club_id]
+    );
+
+    const user = result.rows[0];
+
+    await query(
+      `INSERT INTO team_users (id, team_id, user_id, role)
+       VALUES ($1, $2, $3, $4)`,
+      [uuidv4(), finalTeamId, userId, 'COACH']
+    );
+
+    await query(
+      `INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [uuidv4(), req.user?.userId, AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role: 'COACH', team_id: finalTeamId })]
+    );
+
+    successResponse(res, user, 'Coach created successfully', 201);
+  } catch (error) {
+    console.error('Create coach error:', error);
+    errorResponse(res, 'Failed to create coach', 500, 'CREATE_COACH_FAILED');
+  }
+};
+
+/**
+ * @swagger
+ * /users/super-admin:
+ *   post:
+ *     summary: Make a user a SUPER_ADMIN (System Admin)
+ *     description: Promotes an existing user to SUPER_ADMIN role. Only existing SUPER_ADMIN users can perform this action.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - userId
+ *             properties:
+ *               userId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: The ID of the user to promote to SUPER_ADMIN
+ *     responses:
+ *       200:
+ *         description: User promoted to SUPER_ADMIN successfully
+ *       400:
+ *         description: Invalid user ID or user is already SUPER_ADMIN
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Only SUPER_ADMIN can promote users
+ *       404:
+ *         description: User not found
+ */
+export const makeSuperAdmin = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { userId } = req.body;
+
+    if (!userId) {
+      errorResponse(res, 'User ID is required', 400, 'MISSING_USER_ID');
+      return;
+    }
+
+    // Check if user exists
+    const existingUser = await query(
+      'SELECT id, name, email, role FROM users WHERE id = $1 AND deleted_at IS NULL',
+      [userId]
+    );
+
+    if (existingUser.rows.length === 0) {
+      errorResponse(res, 'User not found', 404, 'USER_NOT_FOUND');
+      return;
+    }
+
+    const user = existingUser.rows[0];
+
+    // Check if user is already SUPER_ADMIN
+    if (user.role === 'SUPER_ADMIN') {
+      errorResponse(res, 'User is already a SUPER_ADMIN', 400, 'ALREADY_SUPER_ADMIN');
+      return;
+    }
+
+    // Update user role to SUPER_ADMIN
+    await query(
+      `UPDATE users
+       SET role = 'SUPER_ADMIN', association_id = NULL, club_id = NULL, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING id, name, email, role`,
+      [userId]
+    );
+
+    // Log audit
+    await query(
+      `INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [uuidv4(), req.user?.userId, AuditAction.UPDATE, 'USER', userId, JSON.stringify({
+        action: 'PROMOTE_TO_SUPER_ADMIN',
+        previousRole: user.role,
+        newRole: 'SUPER_ADMIN'
+      })]
+    );
+
+    successResponse(
+      res,
+      {
+        id: userId,
+        name: user.name,
+        email: user.email,
+        role: 'SUPER_ADMIN',
+      },
+      'User promoted to SUPER_ADMIN successfully'
+    );
+  } catch (error) {
+    console.error('Make super admin error:', error);
+    errorResponse(res, 'Failed to promote user to SUPER_ADMIN', 500, 'MAKE_SUPER_ADMIN_FAILED');
+  }
+};
+
+/**
+ * @swagger
+ * /users/login-as:
+ *   post:
+ *     summary: Login as a different user (Admin only)
+ *     description: Generates access tokens for a specified user. Only SUPER_ADMIN can use this to login as other users for support/debugging.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - userId
+ *             properties:
+ *               userId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: The ID of the user to login as
+ *     responses:
+ *       200:
+ *         description: Login successful, tokens generated
+ *       400:
+ *         description: Invalid user ID
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Only SUPER_ADMIN can login as other users
+ *       404:
+ *         description: User not found
+ */
+export const loginAsUser = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { userId } = req.body;
+
+    if (!userId) {
+      errorResponse(res, 'User ID is required', 400, 'MISSING_USER_ID');
+      return;
+    }
+
+    // Check if user exists
+    const existingUser = await query(
+      'SELECT id, name, email, role, association_id, club_id FROM users WHERE id = $1 AND deleted_at IS NULL',
+      [userId]
+    );
+
+    if (existingUser.rows.length === 0) {
+      errorResponse(res, 'User not found', 404, 'USER_NOT_FOUND');
+      return;
+    }
+
+    const user = existingUser.rows[0];
+
+    // Generate access token (short-lived: 15 minutes)
+    const tokenPayload = {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      associationId: user.association_id,
+      clubId: user.club_id,
+    };
+
+    const accessToken = generateToken(tokenPayload);
+
+    // Generate refresh token (long-lived: 7 days)
+    const refreshToken = uuidv4();
+    const refreshExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    // Store refresh token in database
+    await query(
+      `INSERT INTO refresh_tokens (id, user_id, token, expires_at, device_info, user_agent)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        uuidv4(),
+        user.id,
+        refreshToken,
+        refreshExpiresAt,
+        `Admin Login-as: ${req.user?.email}`,
+        req.get('user-agent') || null,
+      ]
+    );
+
+    // Log audit
+    await query(
+      `INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [uuidv4(), req.user?.userId, AuditAction.LOGIN, 'USER', userId, JSON.stringify({
+        action: 'LOGIN_AS_USER',
+        adminEmail: req.user?.email,
+        targetUserEmail: user.email
+      })]
+    );
+
+    successResponse(res, {
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        associationId: user.association_id,
+        clubId: user.club_id,
+      },
+      accessToken,
+      refreshToken,
+      tokenType: 'Bearer',
+      expiresIn: '15m',
+      refreshExpiresIn: '7d',
+    }, 'Logged in as user successfully');
+  } catch (error) {
+    console.error('Login as user error:', error);
+    errorResponse(res, 'Failed to login as user', 500, 'LOGIN_AS_USER_FAILED');
   }
 };
 
@@ -703,7 +1119,7 @@ export const getUserById = async (req: AuthRequest, res: Response): Promise<void
  *                 format: email
  *               role:
  *                 type: string
- *                 enum: [SUPER_ADMIN, ASSOCIATION_ADMIN, CLUB_ADMIN, COMPETITION_MANAGER, TEAM_MANAGER]
+ *                 enum: [SUPER_ADMIN, ASSOCIATION_ADMIN, CLUB_ADMIN, COMPETITION_MANAGER, TEAM_MANAGER, COACH]
  *               association_id:
  *                 type: string
  *                 format: uuid

@@ -58,6 +58,13 @@ export const subscribe = async (
   try {
     const { email, association_id, preferences } = req.body;
 
+    // Get IP address from request
+    const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+                      req.headers['x-real-ip'] as string ||
+                      req.socket?.remoteAddress ||
+                      req.ip ||
+                      null;
+
     // Validation
     if (!email || !association_id) {
       errorResponse(res, 'Email and association_id are required', 400, 'MISSING_FIELDS');
@@ -111,9 +118,9 @@ export const subscribe = async (
       // Reactivate if unsubscribed
       await client.query(
         `UPDATE email_subscriptions
-         SET status = 'ACTIVE', unsubscribed_at = NULL, updated_at = CURRENT_TIMESTAMP
-         WHERE id = $1`,
-        [subscription.id]
+         SET status = 'ACTIVE', unsubscribed_at = NULL, ip_address = $1, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2`,
+        [ipAddress, subscription.id]
       );
     } else {
       // Create new subscription
@@ -121,14 +128,15 @@ export const subscribe = async (
       const unsubscribeToken = uuidv4();
 
       await client.query(
-        `INSERT INTO email_subscriptions (id, email, association_id, unsubscribe_token, preferences)
-         VALUES ($1, $2, $3, $4, $5)`,
+        `INSERT INTO email_subscriptions (id, email, association_id, unsubscribe_token, preferences, ip_address)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
         [
           subscriptionId,
           email.toLowerCase(),
           association_id,
           unsubscribeToken,
           JSON.stringify(preferences || { news: true, fixtures: true, results: true }),
+          ipAddress,
         ]
       );
 
@@ -143,7 +151,7 @@ export const subscribe = async (
             AuditAction.CREATE,
             'EMAIL_SUBSCRIPTION',
             subscriptionId,
-            JSON.stringify({ email, association_id }),
+            JSON.stringify({ email, association_id, ipAddress }),
           ]
         );
       }
@@ -386,5 +394,49 @@ export const getAssociationSubscribers = async (
   } catch (error) {
     console.error('Get association subscribers error:', error);
     errorResponse(res, 'Failed to get subscribers', 500, 'GET_SUBSCRIBERS_FAILED');
+  }
+};
+
+/**
+ * @swagger
+ * /email-subscriptions:
+ *   get:
+ *     summary: Get all subscribers across all associations (Super Admin only)
+ *     tags: [Email Subscriptions]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of all subscribers
+ *       403:
+ *         description: Forbidden
+ */
+export const getAllSubscribers = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    // Only SUPER_ADMIN can access all subscribers
+    if (req.user?.role !== UserRole.SUPER_ADMIN) {
+      errorResponse(res, 'You do not have permission to view all subscribers', 403, 'FORBIDDEN');
+      return;
+    }
+
+    // Fetch from active_subscribers view which includes association_name
+    const result = await query(
+      `SELECT * FROM active_subscribers ORDER BY created_at DESC`
+    );
+
+    successResponse(
+      res,
+      {
+        subscriberCount: result.rows.length,
+        subscribers: result.rows,
+      },
+      'All subscribers retrieved successfully'
+    );
+  } catch (error) {
+    console.error('Get all subscribers error:', error);
+    errorResponse(res, 'Failed to get all subscribers', 500, 'GET_ALL_SUBSCRIBERS_FAILED');
   }
 };

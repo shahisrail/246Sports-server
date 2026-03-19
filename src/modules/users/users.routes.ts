@@ -5,6 +5,10 @@ import {
   createAssociationAdmin,
   createClubAdmin,
   createCompetitionManager,
+  createTeamManager,
+  createCoach,
+  makeSuperAdmin,
+  loginAsUser,
   getUsers,
   getUserById,
   updateUser,
@@ -55,6 +59,42 @@ router.post(
   authenticate,
   authorize(UserRole.SUPER_ADMIN, UserRole.ASSOCIATION_ADMIN),
   createCompetitionManager
+);
+
+// Create Team Manager
+// POST /api/v1/users/team-manager
+router.post(
+  '/team-manager',
+  authenticate,
+  authorize(UserRole.SUPER_ADMIN, UserRole.ASSOCIATION_ADMIN, UserRole.CLUB_ADMIN),
+  createTeamManager
+);
+
+// Create Coach
+// POST /api/v1/users/coach
+router.post(
+  '/coach',
+  authenticate,
+  authorize(UserRole.SUPER_ADMIN, UserRole.ASSOCIATION_ADMIN, UserRole.CLUB_ADMIN),
+  createCoach
+);
+
+// Make SUPER_ADMIN
+// POST /api/v1/users/super-admin
+router.post(
+  '/super-admin',
+  authenticate,
+  authorize(UserRole.SUPER_ADMIN),
+  makeSuperAdmin
+);
+
+// Login as User
+// POST /api/v1/users/login-as
+router.post(
+  '/login-as',
+  authenticate,
+  authorize(UserRole.SUPER_ADMIN),
+  loginAsUser
 );
 
 // List users (with filters)
