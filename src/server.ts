@@ -1,4 +1,7 @@
 import dotenv from "dotenv";
+
+console.log("🚀 ENTRY FILE LOADED");
+
 import app from "./app";
 import { initDatabase } from "./config/database";
 
@@ -8,16 +11,15 @@ const PORT = Number(process.env.PORT) || 4000;
 
 const startServer = async () => {
   console.log("🔥 SERVER STARTING...");
-  console.log("PORT:", PORT);
 
   try {
     await initDatabase();
-  } catch (error: any) {
-    console.error("❌ DB failed:", error?.message || error);
+  } catch (err) {
+    console.error("DB ERROR:", err);
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`🚀 Server running on port ${PORT}`);
+    console.log("✅ SERVER RUNNING ON", PORT);
   });
 };
 
@@ -29,4 +31,12 @@ process.on("uncaughtException", (err: any) => {
   console.error("Uncaught Exception:", err);
 });
 
-startServer();
+process.on("exit", (code) => {
+  console.log("❌ PROCESS EXITED:", code);
+});
+
+try {
+  startServer();
+} catch (err) {
+  console.error("🔥 FATAL ERROR:", err);
+}

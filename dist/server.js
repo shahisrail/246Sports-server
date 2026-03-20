@@ -4,21 +4,21 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const dotenv_1 = __importDefault(require("dotenv"));
+console.log("🚀 ENTRY FILE LOADED");
 const app_1 = __importDefault(require("./app"));
 const database_1 = require("./config/database");
 dotenv_1.default.config();
 const PORT = Number(process.env.PORT) || 4000;
 const startServer = async () => {
     console.log("🔥 SERVER STARTING...");
-    console.log("PORT:", PORT);
     try {
         await (0, database_1.initDatabase)();
     }
-    catch (error) {
-        console.error("❌ DB failed:", error?.message || error);
+    catch (err) {
+        console.error("DB ERROR:", err);
     }
     app_1.default.listen(PORT, "0.0.0.0", () => {
-        console.log(`🚀 Server running on port ${PORT}`);
+        console.log("✅ SERVER RUNNING ON", PORT);
     });
 };
 process.on("unhandledRejection", (err) => {
@@ -27,5 +27,13 @@ process.on("unhandledRejection", (err) => {
 process.on("uncaughtException", (err) => {
     console.error("Uncaught Exception:", err);
 });
-startServer();
+process.on("exit", (code) => {
+    console.log("❌ PROCESS EXITED:", code);
+});
+try {
+    startServer();
+}
+catch (err) {
+    console.error("🔥 FATAL ERROR:", err);
+}
 //# sourceMappingURL=server.js.map
