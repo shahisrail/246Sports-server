@@ -1,52 +1,44 @@
-import dotenv from 'dotenv';
-import app from './app';
-import { initDatabase } from './config/database';
+import dotenv from "dotenv";
+import app from "./app";
+import { initDatabase } from "./config/database";
 
-// Load environment variables
 dotenv.config();
 
 const PORT = process.env.PORT || 4000;
 
-// Start server
 const startServer = async () => {
-  try {
-    // Initialize database connection
-    await initDatabase();
+  let dbConnected = false;
 
-    // Start listening
-    app.listen(PORT, () => {
-      console.log(`
-╔════════════════════════════════════════════════════════════╗
-║                                                            ║
-║           🏆 246Sports API Server 🏆                      ║
-║                                                            ║
-║           Version: 2.0.0                                  ║
-║           Environment: ${process.env.NODE_ENV || 'development'}                              ║
-║           Port: ${PORT}                                          ║
-║                                                            ║
-║           API Docs: http://localhost:${PORT}/api-docs            ║
-║           Health: http://localhost:${PORT}/health                ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
-      `);
-    });
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    process.exit(1);
+  try {
+    await initDatabase();
+    dbConnected = true;
+    console.log("✅ Database connected successfully");
+  } catch (error: any) {
+    console.error("❌ Database connection failed:", error?.message || error);
+    console.log("⚠️ Starting server WITHOUT database...");
   }
+
+  app.listen(PORT, () => {
+    console.log(`
+🚀 Server is running!
+
+📌 Port: ${PORT}
+🌍 Env: ${process.env.NODE_ENV}
+🗄️ DB: ${dbConnected ? "CONNECTED ✅" : "NOT CONNECTED ❌"}
+
+🔗 Health: http://localhost:${PORT}/health
+🔗 Docs: http://localhost:${PORT}/api-docs
+    `);
+  });
 };
 
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err: any) => {
-  console.error('Unhandled Promise Rejection:', err.message);
-  process.exit(1);
+// Safety handlers (DON'T exit container)
+process.on("unhandledRejection", (err: any) => {
+  console.error("⚠️ Unhandled Promise Rejection:", err?.message || err);
 });
 
-// Handle uncaught exceptions
-process.on('uncaughtException', (err: any) => {
-  console.error('Uncaught Exception:', err.message);
-  process.exit(1);
+process.on("uncaughtException", (err: any) => {
+  console.error("⚠️ Uncaught Exception:", err?.message || err);
 });
 
-// Start the server
 startServer();
