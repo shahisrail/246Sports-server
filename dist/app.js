@@ -4,11 +4,27 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
+const cors_1 = __importDefault(require("cors"));
+const helmet_1 = __importDefault(require("helmet"));
 const app = (0, express_1.default)();
-// simple route
-app.get("/health", (_req, res) => {
-    res.send("OK");
+// ✅ basic middleware
+app.use(express_1.default.json());
+app.use(express_1.default.urlencoded({ extended: true }));
+app.use((0, cors_1.default)());
+app.use((0, helmet_1.default)());
+// ✅ debug log (important)
+app.use((req, _res, next) => {
+    console.log("➡️", req.method, req.url);
+    next();
 });
+// ✅ health check
+app.get("/health", (_req, res) => {
+    res.status(200).json({
+        status: "OK",
+        message: "Server is running 🚀",
+    });
+});
+// ✅ root route
 app.get("/", (_req, res) => {
     res.send("API running 🚀");
 });
