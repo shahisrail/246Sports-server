@@ -4,11 +4,13 @@ import { initDatabase } from "./config/database";
 
 dotenv.config();
 
-const PORT = parseInt(process.env.PORT || "4000", 10);
+// ✅ Always number
+const PORT = Number(process.env.PORT) || 4000;
 
 const startServer = async () => {
   console.log("🔥 SERVER STARTING...");
   console.log("PORT:", PORT);
+  console.log("ENV:", process.env.NODE_ENV);
 
   let dbConnected = false;
 
@@ -21,6 +23,7 @@ const startServer = async () => {
     console.log("⚠️ Starting server WITHOUT database...");
   }
 
+  // ✅ MUST for Docker
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`
 🚀 Server is running!
@@ -34,6 +37,7 @@ const startServer = async () => {
   });
 };
 
+// ✅ prevent crash
 process.on("unhandledRejection", (err: any) => {
   console.error("⚠️ Unhandled Promise Rejection:", err?.message || err);
 });
@@ -42,4 +46,5 @@ process.on("uncaughtException", (err: any) => {
   console.error("⚠️ Uncaught Exception:", err?.message || err);
 });
 
+// ✅ IMPORTANT (must exist)
 startServer();
