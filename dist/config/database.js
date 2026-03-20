@@ -26,7 +26,10 @@ exports.pool = new pg_1.Pool({
 });
 const initDatabase = async () => {
     try {
-        const client = await exports.pool.connect();
+        const client = await Promise.race([
+            exports.pool.connect(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("DB connection timeout")), 5000)),
+        ]);
         await client.query("SELECT 1");
         client.release();
         console.log("✅ Database connected successfully");
@@ -34,7 +37,7 @@ const initDatabase = async () => {
     catch (error) {
         console.error("❌ Database connection failed:");
         console.error(error?.message || error);
-        console.log("⚠️ Server will start without DB");
+        console.log("⚠️ Skipping DB, server will still run");
     }
 };
 exports.initDatabase = initDatabase;
