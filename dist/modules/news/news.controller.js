@@ -37,7 +37,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteNews = exports.updateNews = exports.createNews = exports.getNewsBySlug = exports.getNews = void 0;
-const uuid_1 = require("uuid");
+const uuid_1 = __importDefault(require("uuid"));
+const { v4: uuidv4 } = uuid_1.default;
 const slugify_1 = __importDefault(require("slugify"));
 const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
@@ -304,7 +305,7 @@ const createNews = async (req, res) => {
                 break;
             uniqueSlug = `${slug}-${slugSuffix++}`;
         }
-        const newsId = (0, uuid_1.v4)();
+        const newsId = uuidv4();
         const publishedAt = status === 'PUBLISHED' ? new Date() : null;
         // For association admins, default to their association if not provided
         const finalAssociationId = association_id || (req.user.role === types_1.UserRole.ASSOCIATION_ADMIN ? req.user.associationId : null);

@@ -1,7 +1,11 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.exportFixtureICS = exports.getFinishedFixtures = exports.getUpcomingFixtures = exports.getFixtureDirections = exports.getFixtureAsICS = exports.deleteFixture = exports.updateFixture = exports.createFixture = exports.getFixtureById = exports.getTodayFixtures = exports.getFixtures = void 0;
-const uuid_1 = require("uuid");
+const uuid_1 = __importDefault(require("uuid"));
+const { v4: uuidv4 } = uuid_1.default;
 const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
 const types_1 = require("../../types");
@@ -413,7 +417,7 @@ const createFixture = async (req, res) => {
         // Start transaction for fixture + optional result creation
         await (0, database_1.query)('BEGIN');
         try {
-            const fixtureId = (0, uuid_1.v4)();
+            const fixtureId = uuidv4();
             await (0, database_1.query)(`INSERT INTO fixtures (id, competition_id, home_team_id, away_team_id, venue_id, date_time, round, stream_url, status)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING *`, [
@@ -429,13 +433,13 @@ const createFixture = async (req, res) => {
             ]);
             // Handle scores - create result record if scores are provided
             if (homeScore !== undefined && awayScore !== undefined) {
-                const resultId = (0, uuid_1.v4)();
+                const resultId = uuidv4();
                 await (0, database_1.query)(`INSERT INTO results (id, fixture_id, home_score, away_score, status, created_at, updated_at)
            VALUES ($1, $2, $3, $4, 'SUBMITTED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`, [resultId, fixtureId, homeScore, awayScore]);
             }
             // Log audit
             await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-         VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.CREATE, 'FIXTURE', fixtureId, JSON.stringify({
+         VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_2.AuditAction.CREATE, 'FIXTURE', fixtureId, JSON.stringify({
                     finalCompetitionId,
                     finalDateTime,
                     homeScore,
@@ -588,7 +592,7 @@ const updateFixture = async (req, res) => {
                 }
                 else {
                     // Create new result
-                    const resultId = (0, uuid_1.v4)();
+                    const resultId = uuidv4();
                     await (0, database_1.query)(`INSERT INTO results (id, fixture_id, home_score, away_score, status, created_at, updated_at)
              VALUES ($1, $2, $3, $4, 'SUBMITTED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`, [resultId, id, homeScore, awayScore]);
                 }
@@ -601,7 +605,7 @@ const updateFixture = async (req, res) => {
             }
             // Log audit
             await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-         VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.UPDATE, 'FIXTURE', id, JSON.stringify({
+         VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_2.AuditAction.UPDATE, 'FIXTURE', id, JSON.stringify({
                     originalStatus: status,
                     finalStatus: finalStatus,
                     homeScore,
@@ -672,7 +676,7 @@ const deleteFixture = async (req, res) => {
         await (0, database_1.query)('UPDATE fixtures SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.DELETE, 'FIXTURE', id, JSON.stringify({ id })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_2.AuditAction.DELETE, 'FIXTURE', id, JSON.stringify({ id })]);
         (0, responseHandler_1.successResponse)(res, null, 'Fixture deleted successfully');
     }
     catch (error) {

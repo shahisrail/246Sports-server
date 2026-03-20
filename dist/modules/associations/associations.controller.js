@@ -1,7 +1,11 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteAssociation = exports.updateAssociation = exports.createAssociation = exports.getAssociationById = exports.getAssociations = void 0;
-const uuid_1 = require("uuid");
+const uuid_1 = __importDefault(require("uuid"));
+const { v4: uuidv4 } = uuid_1.default;
 const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
 const types_1 = require("../../types");
@@ -344,7 +348,7 @@ const createAssociation = async (req, res) => {
             return;
         }
         const { name, logo, abbreviation, foundedYear, description, website, websiteUrl, contact_email, contactEmail, contact_phone, contactPhone, address } = req.body;
-        const associationId = (0, uuid_1.v4)();
+        const associationId = uuidv4();
         const result = await (0, database_1.query)(`INSERT INTO associations (id, name, logo, abbreviation, founded_year, description, website, contact_email, contact_phone, address)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`, [
@@ -361,7 +365,7 @@ const createAssociation = async (req, res) => {
         ]);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_1.AuditAction.CREATE, 'ASSOCIATION', associationId, JSON.stringify({ name, abbreviation })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_1.AuditAction.CREATE, 'ASSOCIATION', associationId, JSON.stringify({ name, abbreviation })]);
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'Association created successfully', 201);
     }
     catch (error) {
@@ -544,7 +548,7 @@ const updateAssociation = async (req, res) => {
         const result = await (0, database_1.query)(`UPDATE associations SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`, values);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_1.AuditAction.UPDATE, 'ASSOCIATION', id, JSON.stringify(req.body)]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_1.AuditAction.UPDATE, 'ASSOCIATION', id, JSON.stringify(req.body)]);
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'Association updated successfully');
     }
     catch (error) {
@@ -593,7 +597,7 @@ const deleteAssociation = async (req, res) => {
         await (0, database_1.query)('UPDATE associations SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_1.AuditAction.DELETE, 'ASSOCIATION', id, JSON.stringify({ name: existing.rows[0].name })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_1.AuditAction.DELETE, 'ASSOCIATION', id, JSON.stringify({ name: existing.rows[0].name })]);
         (0, responseHandler_1.successResponse)(res, null, 'Association deleted successfully');
     }
     catch (error) {

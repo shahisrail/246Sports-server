@@ -1,7 +1,11 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteTeam = exports.updateTeam = exports.createTeam = exports.getTeamById = exports.getPublicTeams = exports.getTeams = void 0;
-const uuid_1 = require("uuid");
+const uuid_1 = __importDefault(require("uuid"));
+const { v4: uuidv4 } = uuid_1.default;
 const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
 const types_1 = require("../../types");
@@ -386,7 +390,7 @@ const createTeam = async (req, res) => {
             (0, responseHandler_1.errorResponse)(res, 'You do not have permission to create teams', 403, 'INSUFFICIENT_PERMISSIONS');
             return;
         }
-        const teamId = (0, uuid_1.v4)();
+        const teamId = uuidv4();
         // Validate logo URL if provided
         if (logo && !logo.startsWith('blob:')) {
             if (!(0, validateCloudinary_1.isValidCloudinaryUrl)(logo)) {
@@ -420,7 +424,7 @@ const createTeam = async (req, res) => {
        RETURNING *`, insertValues);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.CREATE, 'TEAM', teamId, JSON.stringify({ name, clubId: finalClubId })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_2.AuditAction.CREATE, 'TEAM', teamId, JSON.stringify({ name, clubId: finalClubId })]);
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'Team created successfully', 201);
     }
     catch (error) {
@@ -510,7 +514,7 @@ const updateTeam = async (req, res) => {
         const result = await (0, database_1.query)(`UPDATE teams SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`, values);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.UPDATE, 'TEAM', id, JSON.stringify(req.body)]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_2.AuditAction.UPDATE, 'TEAM', id, JSON.stringify(req.body)]);
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'Team updated successfully');
     }
     catch (error) {
@@ -553,7 +557,7 @@ const deleteTeam = async (req, res) => {
         await (0, database_1.query)('UPDATE teams SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.DELETE, 'TEAM', id, JSON.stringify({ name: existing.rows[0].name })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_2.AuditAction.DELETE, 'TEAM', id, JSON.stringify({ name: existing.rows[0].name })]);
         (0, responseHandler_1.successResponse)(res, null, 'Team deleted successfully');
     }
     catch (error) {

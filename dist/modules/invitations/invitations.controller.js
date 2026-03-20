@@ -4,7 +4,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.resendInvitation = exports.cancelInvitation = exports.getInvitations = exports.completeInvitation = exports.acceptInvitation = void 0;
-const uuid_1 = require("uuid");
+const uuid_1 = __importDefault(require("uuid"));
+const { v4: uuidv4 } = uuid_1.default;
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
@@ -155,7 +156,7 @@ const completeInvitation = async (req, res) => {
         // Hash password
         const hashedPassword = await bcrypt_1.default.hash(password, 10);
         // Create user
-        const userId = (0, uuid_1.v4)();
+        const userId = uuidv4();
         const userResult = await (0, database_1.query)(`INSERT INTO users (id, email, name, password, role, association_id, club_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id, email, name, role, association_id, club_id`, [
@@ -404,7 +405,7 @@ const resendInvitation = async (req, res) => {
             return;
         }
         // Update token and expiration
-        const newToken = (0, uuid_1.v4)();
+        const newToken = uuidv4();
         const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
         await (0, database_1.query)(`UPDATE user_invitations
        SET token = $1, expires_at = $2, updated_at = CURRENT_TIMESTAMP

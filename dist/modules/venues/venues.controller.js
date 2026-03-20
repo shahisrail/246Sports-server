@@ -1,7 +1,11 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteVenue = exports.updateVenue = exports.createVenue = exports.getVenueById = exports.getVenues = void 0;
-const uuid_1 = require("uuid");
+const uuid_1 = __importDefault(require("uuid"));
+const { v4: uuidv4 } = uuid_1.default;
 const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
 const types_1 = require("../../types");
@@ -143,7 +147,7 @@ const createVenue = async (req, res) => {
             return;
         }
         const { name, address, latitude, longitude, capacity, surface = types_1.VenueSurface.GRASS, photo, amenities, } = req.body;
-        const venueId = (0, uuid_1.v4)();
+        const venueId = uuidv4();
         const result = await (0, database_1.query)(`INSERT INTO venues (id, name, address, latitude, longitude, capacity, surface, photo, amenities)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`, [
@@ -159,7 +163,7 @@ const createVenue = async (req, res) => {
         ]);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.CREATE, 'VENUE', venueId, JSON.stringify({ name, address })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_2.AuditAction.CREATE, 'VENUE', venueId, JSON.stringify({ name, address })]);
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'Venue created successfully', 201);
     }
     catch (error) {
@@ -267,7 +271,7 @@ const updateVenue = async (req, res) => {
         const result = await (0, database_1.query)(`UPDATE venues SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`, values);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.UPDATE, 'VENUE', id, JSON.stringify(req.body)]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_2.AuditAction.UPDATE, 'VENUE', id, JSON.stringify(req.body)]);
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'Venue updated successfully');
     }
     catch (error) {
@@ -310,7 +314,7 @@ const deleteVenue = async (req, res) => {
         await (0, database_1.query)('UPDATE venues SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.DELETE, 'VENUE', id, JSON.stringify({ name: existing.rows[0].name })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_2.AuditAction.DELETE, 'VENUE', id, JSON.stringify({ name: existing.rows[0].name })]);
         (0, responseHandler_1.successResponse)(res, null, 'Venue deleted successfully');
     }
     catch (error) {

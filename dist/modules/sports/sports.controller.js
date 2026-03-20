@@ -1,7 +1,11 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getSportsStats = exports.deleteSportPosition = exports.updateSportPosition = exports.createSportPosition = exports.deleteSport = exports.updateSport = exports.createSport = exports.getSportPositions = exports.getSportById = exports.getSportsByCategory = exports.getSports = void 0;
-const uuid_1 = require("uuid");
+const uuid_1 = __importDefault(require("uuid"));
+const { v4: uuidv4 } = uuid_1.default;
 const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
 const types_1 = require("../../types");
@@ -287,13 +291,13 @@ const createSport = async (req, res) => {
             (0, responseHandler_1.errorResponse)(res, 'Sport with this name or slug already exists', 409, 'SPORT_ALREADY_EXISTS');
             return;
         }
-        const sportId = (0, uuid_1.v4)();
+        const sportId = uuidv4();
         const result = await (0, database_1.query)(`INSERT INTO sports (id, name, slug, category, description, icon, is_popular, is_active, display_order, metadata)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`, [sportId, name, sportSlug, category, description || null, icon || null, is_popular, is_active, display_order, JSON.stringify(metadata)]);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_1.AuditAction.CREATE, 'SPORT', sportId, JSON.stringify({ name, category })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_1.AuditAction.CREATE, 'SPORT', sportId, JSON.stringify({ name, category })]);
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'Sport created successfully', 201);
     }
     catch (error) {
@@ -407,7 +411,7 @@ const updateSport = async (req, res) => {
         const result = await (0, database_1.query)(`UPDATE sports SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`, values);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_1.AuditAction.UPDATE, 'SPORT', id, JSON.stringify(req.body)]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_1.AuditAction.UPDATE, 'SPORT', id, JSON.stringify(req.body)]);
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'Sport updated successfully');
     }
     catch (error) {
@@ -458,7 +462,7 @@ const deleteSport = async (req, res) => {
         await (0, database_1.query)('UPDATE sports SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_1.AuditAction.DELETE, 'SPORT', id, JSON.stringify({ name: existing.rows[0].name })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_1.AuditAction.DELETE, 'SPORT', id, JSON.stringify({ name: existing.rows[0].name })]);
         (0, responseHandler_1.successResponse)(res, null, 'Sport deleted successfully');
     }
     catch (error) {
@@ -525,13 +529,13 @@ const createSportPosition = async (req, res) => {
             (0, responseHandler_1.errorResponse)(res, 'Sport not found', 404, 'SPORT_NOT_FOUND');
             return;
         }
-        const positionId = (0, uuid_1.v4)();
+        const positionId = uuidv4();
         const result = await (0, database_1.query)(`INSERT INTO sport_positions (id, sport_id, name, abbreviation, description, display_order, is_active)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`, [positionId, sport_id, name, abbreviation || null, description || null, display_order, is_active]);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_1.AuditAction.CREATE, 'SPORT_POSITION', positionId, JSON.stringify({ sport_id, name })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_1.AuditAction.CREATE, 'SPORT_POSITION', positionId, JSON.stringify({ sport_id, name })]);
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'Sport position created successfully', 201);
     }
     catch (error) {
@@ -620,7 +624,7 @@ const updateSportPosition = async (req, res) => {
         const result = await (0, database_1.query)(`UPDATE sport_positions SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`, values);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_1.AuditAction.UPDATE, 'SPORT_POSITION', id, JSON.stringify(req.body)]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_1.AuditAction.UPDATE, 'SPORT_POSITION', id, JSON.stringify(req.body)]);
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'Sport position updated successfully');
     }
     catch (error) {
@@ -671,7 +675,7 @@ const deleteSportPosition = async (req, res) => {
         await (0, database_1.query)('UPDATE sport_positions SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_1.AuditAction.DELETE, 'SPORT_POSITION', id, JSON.stringify({ name: existing.rows[0].name })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_1.AuditAction.DELETE, 'SPORT_POSITION', id, JSON.stringify({ name: existing.rows[0].name })]);
         (0, responseHandler_1.successResponse)(res, null, 'Sport position deleted successfully');
     }
     catch (error) {

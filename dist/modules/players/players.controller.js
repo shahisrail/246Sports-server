@@ -1,7 +1,11 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deletePlayer = exports.updatePlayer = exports.createPlayer = exports.getPlayerById = exports.getPlayers = void 0;
-const uuid_1 = require("uuid");
+const uuid_1 = __importDefault(require("uuid"));
+const { v4: uuidv4 } = uuid_1.default;
 const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
 const types_1 = require("../../types");
@@ -176,7 +180,7 @@ const createPlayer = async (req, res) => {
             (0, responseHandler_1.errorResponse)(res, 'Name is required', 400, 'NAME_REQUIRED');
             return;
         }
-        const playerId = (0, uuid_1.v4)();
+        const playerId = uuidv4();
         const result = await (0, database_1.query)(`INSERT INTO players (id, name, team_id, photo, position, squad_number, date_of_birth, nationality, height, weight, bio, is_active)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING *`, [
@@ -195,7 +199,7 @@ const createPlayer = async (req, res) => {
         ]);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_1.AuditAction.CREATE, 'PLAYER', playerId, JSON.stringify({ name: playerName, team_id })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_1.AuditAction.CREATE, 'PLAYER', playerId, JSON.stringify({ name: playerName, team_id })]);
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'Player created successfully', 201);
     }
     catch (error) {
@@ -313,7 +317,7 @@ const updatePlayer = async (req, res) => {
         const result = await (0, database_1.query)(`UPDATE players SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`, values);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_1.AuditAction.UPDATE, 'PLAYER', id, JSON.stringify(req.body)]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_1.AuditAction.UPDATE, 'PLAYER', id, JSON.stringify(req.body)]);
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'Player updated successfully');
     }
     catch (error) {
@@ -356,7 +360,7 @@ const deletePlayer = async (req, res) => {
         await (0, database_1.query)('UPDATE players SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_1.AuditAction.DELETE, 'PLAYER', id, JSON.stringify({ name: existing.rows[0].name })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_1.AuditAction.DELETE, 'PLAYER', id, JSON.stringify({ name: existing.rows[0].name })]);
         (0, responseHandler_1.successResponse)(res, null, 'Player deleted successfully');
     }
     catch (error) {

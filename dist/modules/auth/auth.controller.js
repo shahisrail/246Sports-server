@@ -5,7 +5,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.changePassword = exports.getProfile = exports.login = exports.register = void 0;
 const bcrypt_1 = __importDefault(require("bcrypt"));
-const uuid_1 = require("uuid");
+const uuid_1 = __importDefault(require("uuid"));
+const { v4: uuidv4 } = uuid_1.default;
 const database_1 = require("../../config/database");
 const jwt_1 = require("../../utils/jwt");
 const responseHandler_1 = require("../../utils/responseHandler");
@@ -65,7 +66,7 @@ const register = async (req, res) => {
         // Hash password
         const hashedPassword = await bcrypt_1.default.hash(password, 10);
         // Create user
-        const userId = (0, uuid_1.v4)();
+        const userId = uuidv4();
         const result = await (0, database_1.query)(`INSERT INTO users (id, name, email, password, role, association_id, club_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id, name, email, role, association_id, club_id, created_at`, [userId, name, email, hashedPassword, role, association_id || null, club_id || null]);
@@ -80,7 +81,7 @@ const register = async (req, res) => {
         });
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), userId, types_1.AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), userId, types_1.AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role })]);
         (0, responseHandler_1.successResponse)(res, {
             user: {
                 id: user.id,
@@ -152,7 +153,7 @@ const login = async (req, res) => {
         });
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), user.id, types_1.AuditAction.LOGIN, 'USER', user.id, JSON.stringify({ email })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), user.id, types_1.AuditAction.LOGIN, 'USER', user.id, JSON.stringify({ email })]);
         (0, responseHandler_1.successResponse)(res, {
             user: {
                 id: user.id,
@@ -260,7 +261,7 @@ const changePassword = async (req, res) => {
         await (0, database_1.query)('UPDATE users SET password = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [hashedPassword, req.user.userId]);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_1.AuditAction.UPDATE, 'USER', req.user.userId, JSON.stringify({ action: 'PASSWORD_CHANGE' })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_1.AuditAction.UPDATE, 'USER', req.user.userId, JSON.stringify({ action: 'PASSWORD_CHANGE' })]);
         (0, responseHandler_1.successResponse)(res, null, 'Password changed successfully');
     }
     catch (error) {

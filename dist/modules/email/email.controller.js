@@ -32,9 +32,13 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.verifyEmailConfig = exports.sendWelcome = exports.sendPasswordReset = exports.sendInvitation = void 0;
-const uuid_1 = require("uuid");
+const uuid_1 = __importDefault(require("uuid"));
+const { v4: uuidv4 } = uuid_1.default;
 const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
 const types_1 = require("../../types");
@@ -113,12 +117,12 @@ const sendInvitation = async (req, res) => {
             return;
         }
         // Create invitation token (valid for 7 days)
-        const invitationToken = (0, uuid_1.v4)();
+        const invitationToken = uuidv4();
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
         // Store invitation in database
         await (0, database_1.query)(`INSERT INTO user_invitations (id, email, name, role, association_id, invited_by, token, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, [
-            (0, uuid_1.v4)(),
+            uuidv4(),
             email,
             name || email.split('@')[0],
             role,
@@ -203,11 +207,11 @@ const sendPasswordReset = async (req, res) => {
         }
         const user = userResult.rows[0];
         // Create reset token (valid for 1 hour)
-        const resetToken = (0, uuid_1.v4)();
+        const resetToken = uuidv4();
         const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
         // Store reset token in database
         await (0, database_1.query)(`INSERT INTO password_reset_tokens (id, user_id, token, expires_at)
-       VALUES ($1, $2, $3, $4)`, [(0, uuid_1.v4)(), user.id, resetToken, expiresAt]);
+       VALUES ($1, $2, $3, $4)`, [uuidv4(), user.id, resetToken, expiresAt]);
         // Create reset link
         const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
         // Send password reset email

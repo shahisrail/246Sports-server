@@ -5,7 +5,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.revokeAllTokens = exports.loginV2 = exports.logout = exports.refreshToken = void 0;
 const bcrypt_1 = __importDefault(require("bcrypt"));
-const uuid_1 = require("uuid");
+const uuid_1 = __importDefault(require("uuid"));
+const { v4: uuidv4 } = uuid_1.default;
 const database_1 = require("../../config/database");
 const jwt_1 = require("../../utils/jwt");
 const responseHandler_1 = require("../../utils/responseHandler");
@@ -92,11 +93,11 @@ const refreshToken = async (req, res) => {
         const newAccessToken = (0, jwt_1.generateToken)(user);
         // Rotate refresh token (revoke old, create new)
         await (0, database_1.query)('UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE token = $1', [refreshToken]);
-        const newRefreshToken = (0, uuid_1.v4)();
+        const newRefreshToken = uuidv4();
         const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
         await (0, database_1.query)(`INSERT INTO refresh_tokens (id, user_id, token, expires_at, device_info, user_agent)
        VALUES ($1, $2, $3, $4, $5, $6)`, [
-            (0, uuid_1.v4)(),
+            uuidv4(),
             user.userId,
             newRefreshToken,
             newExpiresAt,
@@ -280,12 +281,12 @@ const loginV2 = async (req, res) => {
         console.log('Login - Token payload being signed:', tokenPayload);
         const accessToken = (0, jwt_1.generateToken)(tokenPayload);
         // Generate refresh token (long-lived: 7 days)
-        const refreshToken = (0, uuid_1.v4)();
+        const refreshToken = uuidv4();
         const refreshExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
         // Store refresh token in database
         await (0, database_1.query)(`INSERT INTO refresh_tokens (id, user_id, token, expires_at, device_info, user_agent)
        VALUES ($1, $2, $3, $4, $5, $6)`, [
-            (0, uuid_1.v4)(),
+            uuidv4(),
             user.id,
             refreshToken,
             refreshExpiresAt,
