@@ -7,13 +7,12 @@ exports.query = exports.initDatabase = exports.pool = void 0;
 const pg_1 = require("pg");
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
-// Ensure DATABASE_URL exists
+// ❌ DO NOT EXIT (IMPORTANT)
 if (!process.env.DATABASE_URL) {
     console.error("❌ DATABASE_URL is missing!");
-    process.exit(1);
+    console.log("⚠️ Continuing without DB...");
 }
 const isProduction = process.env.NODE_ENV === "production";
-// Create pool (ONLY DATABASE_URL)
 exports.pool = new pg_1.Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: isProduction
@@ -25,7 +24,6 @@ exports.pool = new pg_1.Pool({
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
 });
-// Initialize database connection
 const initDatabase = async () => {
     try {
         const client = await exports.pool.connect();
@@ -36,12 +34,10 @@ const initDatabase = async () => {
     catch (error) {
         console.error("❌ Database connection failed:");
         console.error(error?.message || error);
-        // ❗ DO NOT crash container (important for Coolify)
-        console.log("⚠️ Server will start without DB connection");
+        console.log("⚠️ Server will start without DB");
     }
 };
 exports.initDatabase = initDatabase;
-// Query helper
 const query = (text, params) => {
     return exports.pool.query(text, params);
 };

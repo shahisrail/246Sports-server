@@ -3,15 +3,14 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// Ensure DATABASE_URL exists
+// ❌ DO NOT EXIT (IMPORTANT)
 if (!process.env.DATABASE_URL) {
   console.error("❌ DATABASE_URL is missing!");
-  process.exit(1);
+  console.log("⚠️ Continuing without DB...");
 }
 
 const isProduction = process.env.NODE_ENV === "production";
 
-// Create pool (ONLY DATABASE_URL)
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 
@@ -26,7 +25,6 @@ export const pool = new Pool({
   connectionTimeoutMillis: 10000,
 });
 
-// Initialize database connection
 export const initDatabase = async (): Promise<void> => {
   try {
     const client = await pool.connect();
@@ -38,12 +36,10 @@ export const initDatabase = async (): Promise<void> => {
     console.error("❌ Database connection failed:");
     console.error(error?.message || error);
 
-    // ❗ DO NOT crash container (important for Coolify)
-    console.log("⚠️ Server will start without DB connection");
+    console.log("⚠️ Server will start without DB");
   }
 };
 
-// Query helper
 export const query = (text: string, params?: any[]) => {
   return pool.query(text, params);
 };
