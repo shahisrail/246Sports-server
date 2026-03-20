@@ -4,11 +4,10 @@ import { initDatabase } from "./config/database";
 
 dotenv.config();
 
-const PORT = process.env.PORT || 4000;
+const PORT = parseInt(process.env.PORT || "4000", 10);
 
 const startServer = async () => {
   console.log("🔥 SERVER STARTING...");
-  console.log("ENV:", process.env.NODE_ENV);
   console.log("PORT:", PORT);
 
   let dbConnected = false;
@@ -31,12 +30,10 @@ const startServer = async () => {
 🗄️ DB: ${dbConnected ? "CONNECTED ✅" : "NOT CONNECTED ❌"}
 
 🔗 Health: http://localhost:${PORT}/health
-🔗 Docs: http://localhost:${PORT}/api-docs
     `);
   });
 };
 
-// Safety handlers (DO NOT crash container)
 process.on("unhandledRejection", (err: any) => {
   console.error("⚠️ Unhandled Promise Rejection:", err?.message || err);
 });
