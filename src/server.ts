@@ -10,22 +10,17 @@ const startServer = async () => {
   console.log("🔥 SERVER STARTING...");
   console.log("PORT:", PORT);
 
-  let dbConnected = false;
-
   try {
     await initDatabase();
-    dbConnected = true;
   } catch (error: any) {
     console.error("❌ DB failed:", error?.message || error);
   }
 
-  // ✅ MUST for Coolify
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`🚀 Server running on port ${PORT}`);
   });
 };
 
-// ❌ prevent crash
 process.on("unhandledRejection", (err: any) => {
   console.error("Unhandled Rejection:", err);
 });
