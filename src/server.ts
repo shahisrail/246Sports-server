@@ -7,6 +7,10 @@ dotenv.config();
 const PORT = process.env.PORT || 4000;
 
 const startServer = async () => {
+  console.log("🔥 SERVER STARTING...");
+  console.log("ENV:", process.env.NODE_ENV);
+  console.log("PORT:", PORT);
+
   let dbConnected = false;
 
   try {
@@ -18,7 +22,7 @@ const startServer = async () => {
     console.log("⚠️ Starting server WITHOUT database...");
   }
 
-  app.listen(PORT, () => {
+  app.listen(PORT, "0.0.0.0", () => {
     console.log(`
 🚀 Server is running!
 
@@ -32,7 +36,7 @@ const startServer = async () => {
   });
 };
 
-// Safety handlers (DON'T exit container)
+// Safety handlers (DO NOT crash container)
 process.on("unhandledRejection", (err: any) => {
   console.error("⚠️ Unhandled Promise Rejection:", err?.message || err);
 });
