@@ -1,0 +1,15 @@
+[phases.build]
+cmds = ["npm run build"]
+
+[phases.start]
+cmd = "node dist/server.js"
+
+[start]
+cmd = "node dist/server.js"
+
+[build]
+cmd = "npm run build"
+
+# Ensure devDependencies are installed for build
+[variables]
+NODE_ENV = "development"

@@ -41,7 +41,11 @@ export const initDatabase = async (): Promise<void> => {
     console.log("✅ Database connected successfully");
   } catch (error) {
     console.error("❌ Database connection failed:", error);
-    // process.exit(1);
+    // In production, we want to exit if database is not available
+    if (process.env.NODE_ENV === "production") {
+      console.error("❌ Exiting due to database connection failure in production");
+      process.exit(1);
+    }
   }
 };
 
