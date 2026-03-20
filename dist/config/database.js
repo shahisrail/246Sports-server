@@ -7,23 +7,20 @@ exports.query = exports.initDatabase = exports.pool = void 0;
 const pg_1 = require("pg");
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
-// ❌ DO NOT EXIT (IMPORTANT)
+// ❌ DO NOT EXIT (important for Coolify)
 if (!process.env.DATABASE_URL) {
     console.error("❌ DATABASE_URL is missing!");
     console.log("⚠️ Continuing without DB...");
 }
-const isProduction = process.env.NODE_ENV === "production";
+// ✅ NO SSL for Coolify local Postgres
 exports.pool = new pg_1.Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: isProduction
-        ? {
-            rejectUnauthorized: false,
-        }
-        : false,
+    ssl: false,
     max: 20,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
+    connectionTimeoutMillis: 5000, // faster fail
 });
+// ✅ safe DB init (non-blocking + timeout)
 const initDatabase = async () => {
     try {
         const client = await Promise.race([
@@ -41,6 +38,7 @@ const initDatabase = async () => {
     }
 };
 exports.initDatabase = initDatabase;
+// ✅ query helper
 const query = (text, params) => {
     return exports.pool.query(text, params);
 };

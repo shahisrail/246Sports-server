@@ -3,28 +3,23 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// ❌ DO NOT EXIT (IMPORTANT)
+// ❌ DO NOT EXIT (important for Coolify)
 if (!process.env.DATABASE_URL) {
   console.error("❌ DATABASE_URL is missing!");
   console.log("⚠️ Continuing without DB...");
 }
 
-const isProduction = process.env.NODE_ENV === "production";
-
+// ✅ NO SSL for Coolify local Postgres
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-
-  ssl: isProduction
-    ? {
-        rejectUnauthorized: false,
-      }
-    : false,
+  ssl: false,
 
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  connectionTimeoutMillis: 5000, // faster fail
 });
 
+// ✅ safe DB init (non-blocking + timeout)
 export const initDatabase = async (): Promise<void> => {
   try {
     const client: any = await Promise.race([
@@ -45,6 +40,8 @@ export const initDatabase = async (): Promise<void> => {
     console.log("⚠️ Skipping DB, server will still run");
   }
 };
+
+// ✅ query helper
 export const query = (text: string, params?: any[]) => {
   return pool.query(text, params);
 };
