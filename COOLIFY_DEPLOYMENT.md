@@ -2,14 +2,14 @@
 
 ## Issues Fixed
 
-1. **Build Configuration**: Created `nixpacks.toml` to ensure proper build process
-2. **Database Error Handling**: Added proper production error handling
-3. **Environment Variables**: Fixed NODE_ENV configuration
+1. **Database Error Handling**: Added proper production error handling
+2. **Environment Variables**: Fixed NODE_ENV configuration
+3. **Build Validation**: Added startup health check script
 
 ## Coolify Configuration
 
 ### Build Settings
-- **Build Pack**: Nixpacks
+- **Build Pack**: Nixpacks (Auto-detected)
 - **Base Directory**: `/backend`
 - **Install Command**: `npm install`
 - **Build Command**: `npm run build`
