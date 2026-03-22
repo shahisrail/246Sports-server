@@ -35,6 +35,16 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     user_agent TEXT
 );
 
+-- Password reset tokens table
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token UUID NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    used_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Associations table
 CREATE TABLE IF NOT EXISTS associations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -74,6 +84,8 @@ CREATE TABLE IF NOT EXISTS seasons (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     association_id UUID REFERENCES associations(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
+    year VARCHAR(20),
+    status VARCHAR(50),
     start_date DATE,
     end_date DATE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -119,11 +131,19 @@ CREATE TABLE IF NOT EXISTS venues (
 CREATE TABLE IF NOT EXISTS teams (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     club_id UUID REFERENCES clubs(id) ON DELETE SET NULL,
+    competition_id UUID REFERENCES competitions(id) ON DELETE SET NULL,
     name VARCHAR(255) NOT NULL,
     category VARCHAR(50) CHECK (category IN ('SENIOR', 'U23', 'U20', 'U18', 'U15', 'U13')),
     gender VARCHAR(20) CHECK (gender IN ('MALE', 'FEMALE', 'MIXED')),
+    abbreviation VARCHAR(20),
     logo TEXT,
     coach_name VARCHAR(255),
+    founded_year INTEGER,
+    colors TEXT[],
+    description TEXT,
+    website TEXT,
+    contact_email VARCHAR(255),
+    contact_phone VARCHAR(50),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP
@@ -137,6 +157,16 @@ CREATE TABLE IF NOT EXISTS team_competitions (
     registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     registered_by UUID REFERENCES users(id),
     UNIQUE(team_id, competition_id)
+);
+
+-- Team users junction table
+CREATE TABLE IF NOT EXISTS team_users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(50) NOT NULL,
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    assigned_by UUID REFERENCES users(id)
 );
 
 -- Players table
@@ -155,7 +185,20 @@ CREATE TABLE IF NOT EXISTS players (
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP
+    deleted_at TIMESTAMP,
+    sport_id UUID REFERENCES sports(id)
+);
+
+-- Player sports junction table
+CREATE TABLE IF NOT EXISTS player_sports (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    player_id UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    sport_id UUID NOT NULL REFERENCES sports(id) ON DELETE CASCADE,
+    position_id UUID REFERENCES sport_positions(id),
+    is_primary BOOLEAN DEFAULT false,
+    jersey_number INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Fixtures table
@@ -197,6 +240,8 @@ CREATE TABLE IF NOT EXISTS results (
     status VARCHAR(50) CHECK (status IN ('SUBMITTED', 'CONFIRMED', 'PUBLISHED')),
     submitted_by UUID REFERENCES users(id),
     confirmed_by UUID REFERENCES users(id),
+    confirmed_at TIMESTAMP,
+    published_by UUID REFERENCES users(id),
     published_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -259,6 +304,7 @@ CREATE TABLE IF NOT EXISTS news (
     content TEXT NOT NULL,
     featured_image TEXT,
     sport VARCHAR(100),
+    sport_id_new UUID,
     category VARCHAR(50) CHECK (category IN ('BULLETIN', 'UPDATE', 'FEATURE', 'ANNOUNCEMENT')),
     region VARCHAR(100),
     status VARCHAR(20) DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'ARCHIVED')),
@@ -298,16 +344,37 @@ CREATE TABLE IF NOT EXISTS email_subscriptions (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- User invitations table
+CREATE TABLE IF NOT EXISTS user_invitations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email VARCHAR(255) NOT NULL,
+    name VARCHAR(255),
+    role VARCHAR(50) NOT NULL,
+    association_id UUID REFERENCES associations(id),
+    club_id UUID REFERENCES clubs(id),
+    invited_by UUID NOT NULL REFERENCES users(id),
+    token UUID NOT NULL UNIQUE,
+    expires_at TIMESTAMP NOT NULL,
+    accepted_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Sports table
 CREATE TABLE IF NOT EXISTS sports (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(100) NOT NULL UNIQUE,
     slug VARCHAR(100) NOT NULL UNIQUE,
+    category VARCHAR(100),
     icon TEXT,
     description TEXT,
+    is_popular BOOLEAN DEFAULT false,
     is_active BOOLEAN DEFAULT true,
+    display_order INTEGER DEFAULT 0,
+    metadata JSONB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP
 );
 
 -- Sport positions table
@@ -356,6 +423,14 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Schema migrations table
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    id SERIAL PRIMARY KEY,
+    migration_name VARCHAR(255) NOT NULL UNIQUE,
+    checksum VARCHAR(255),
+    executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- ============================================
 -- INDEXES
 -- ============================================
@@ -366,29 +441,40 @@ CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 CREATE INDEX IF NOT EXISTS idx_users_association ON users(association_id);
 CREATE INDEX IF NOT EXISTS idx_users_club ON users(club_id);
 
--- Associations indexes
-CREATE INDEX IF NOT EXISTS idx_associations_abbreviation ON associations(abbreviation);
-
 -- Refresh tokens indexes
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON refresh_tokens(token);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires ON refresh_tokens(expires_at);
 
+-- Password reset tokens indexes
+CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token ON password_reset_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expires_at ON password_reset_tokens(expires_at);
+
+-- Associations indexes
+CREATE INDEX IF NOT EXISTS idx_associations_abbreviation ON associations(abbreviation);
+
 -- Competitions indexes
 CREATE INDEX IF NOT EXISTS idx_competitions_association_sport ON competitions(association_id, sport);
 CREATE INDEX IF NOT EXISTS idx_competitions_season ON competitions(season_id);
 CREATE INDEX IF NOT EXISTS idx_competitions_status ON competitions(status);
+CREATE INDEX IF NOT EXISTS idx_competitions_sport ON competitions(sport_id);
+CREATE INDEX IF NOT EXISTS idx_competitions_dates ON competitions(start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_competitions_status_dates ON competitions(status, start_date);
 
 -- Fixtures indexes
-CREATE INDEX IF NOT EXISTS idx_fixtures_datetime_status ON fixtures(date_time, status);
+CREATE INDEX IF NOT EXISTS idx_fixtures_datetime_status ON fixtures(status, date_time);
 CREATE INDEX IF NOT EXISTS idx_fixtures_competition_status ON fixtures(competition_id, status);
 CREATE INDEX IF NOT EXISTS idx_fixtures_team_home ON fixtures(home_team_id);
 CREATE INDEX IF NOT EXISTS idx_fixtures_team_away ON fixtures(away_team_id);
 CREATE INDEX IF NOT EXISTS idx_fixtures_venue ON fixtures(venue_id);
+CREATE INDEX IF NOT EXISTS idx_fixtures_date ON fixtures(date_time);
 
 -- Results indexes
 CREATE INDEX IF NOT EXISTS idx_results_fixture ON results(fixture_id);
 CREATE INDEX IF NOT EXISTS idx_results_status ON results(status);
+CREATE INDEX IF NOT EXISTS idx_results_fixture_status ON results(fixture_id, status);
+CREATE INDEX IF NOT EXISTS idx_results_published ON results(published_at);
 
 -- Standings indexes
 CREATE INDEX IF NOT EXISTS idx_standings_competition_points ON standings(competition_id, points DESC);
@@ -399,11 +485,20 @@ CREATE INDEX IF NOT EXISTS idx_news_slug ON news(slug);
 CREATE INDEX IF NOT EXISTS idx_news_association ON news(association_id);
 CREATE INDEX IF NOT EXISTS idx_news_status ON news(status);
 CREATE INDEX IF NOT EXISTS idx_news_published ON news(published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_news_sport ON news(sport);
 
 -- Email subscriptions indexes
 CREATE INDEX IF NOT EXISTS idx_email_subscriptions_email ON email_subscriptions(email);
 CREATE INDEX IF NOT EXISTS idx_email_subscriptions_association ON email_subscriptions(association_id);
 CREATE INDEX IF NOT EXISTS idx_email_subscriptions_status ON email_subscriptions(status);
+CREATE INDEX IF NOT EXISTS idx_email_subscriptions_ip ON email_subscriptions(ip_address);
+CREATE INDEX IF NOT EXISTS idx_email_subscriptions_unsubscribe_token ON email_subscriptions(unsubscribe_token);
+
+-- Sports indexes
+CREATE INDEX IF NOT EXISTS idx_sports_slug ON sports(slug);
+CREATE INDEX IF NOT EXISTS idx_sports_category ON sports(category);
+CREATE INDEX IF NOT EXISTS idx_sports_popular ON sports(is_popular);
+CREATE INDEX IF NOT EXISTS idx_sports_active ON sports(is_active);
 
 -- Sport positions indexes
 CREATE INDEX IF NOT EXISTS idx_sport_positions_sport ON sport_positions(sport_id);
@@ -414,5 +509,51 @@ CREATE INDEX IF NOT EXISTS idx_sport_positions_order ON sport_positions(sport_id
 CREATE INDEX IF NOT EXISTS idx_team_competitions_team ON team_competitions(team_id);
 CREATE INDEX IF NOT EXISTS idx_team_competitions_competition ON team_competitions(competition_id);
 
+-- Team users indexes
+CREATE INDEX IF NOT EXISTS idx_team_users_team ON team_users(team_id);
+CREATE INDEX IF NOT EXISTS idx_team_users_user ON team_users(user_id);
+CREATE INDEX IF NOT EXISTS idx_team_users_role ON team_users(role);
+
+-- Teams indexes
+CREATE INDEX IF NOT EXISTS idx_teams_club ON teams(club_id);
+CREATE INDEX IF NOT EXISTS idx_teams_competition ON teams(competition_id);
+CREATE INDEX IF NOT EXISTS idx_teams_club_id ON teams(club_id);
+CREATE INDEX IF NOT EXISTS idx_teams_competition_id ON teams(competition_id);
+
+-- Players indexes
+CREATE INDEX IF NOT EXISTS idx_players_team ON players(team_id);
+CREATE INDEX IF NOT EXISTS idx_players_sport ON players(sport_id);
+CREATE INDEX IF NOT EXISTS idx_players_is_active ON players(is_active);
+
+-- Player sports indexes
+CREATE INDEX IF NOT EXISTS idx_player_sports_player ON player_sports(player_id);
+CREATE INDEX IF NOT EXISTS idx_player_sports_sport ON player_sports(sport_id);
+CREATE INDEX IF NOT EXISTS idx_player_sports_primary ON player_sports(player_id, is_primary);
+
+-- User invitations indexes
+CREATE INDEX IF NOT EXISTS idx_user_invitations_email ON user_invitations(email);
+CREATE INDEX IF NOT EXISTS idx_user_invitations_token ON user_invitations(token);
+CREATE INDEX IF NOT EXISTS idx_user_invitations_expires_at ON user_invitations(expires_at);
+CREATE INDEX IF NOT EXISTS idx_user_invitations_association ON user_invitations(association_id);
+
 -- Fixture updates indexes
 CREATE INDEX IF NOT EXISTS idx_fixture_updates_fixture ON fixture_updates(fixture_id, created_at);
+
+-- Standings history indexes
+CREATE INDEX IF NOT EXISTS idx_standings_history_competition ON standings_history(competition_id, recorded_at);
+CREATE INDEX IF NOT EXISTS idx_standings_history_team ON standings_history(team_id);
+
+-- Audit logs indexes
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity, entity_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at);
+
+-- Background jobs indexes
+CREATE INDEX IF NOT EXISTS idx_background_jobs_type ON background_jobs(job_type);
+CREATE INDEX IF NOT EXISTS idx_background_jobs_status ON background_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_background_jobs_scheduled ON background_jobs(scheduled_at);
+
+-- Venues indexes
+CREATE INDEX IF NOT EXISTS idx_venues_gps_coordinates ON venues(latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_venues_with_gps ON venues(name, address, latitude, longitude);
