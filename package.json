@@ -11,6 +11,7 @@
     "start:check": "ts-node src/scripts/startup-check.ts",
     "db:check": "node check-db.js",
     "db:init": "node init-db.js",
+    "db:admin": "node ensure-admin.js",
     "test": "echo \"Tests not yet implemented\" && exit 1",
     "test:email": "ts-node src/scripts/test-email.ts",
     "debug:email": "ts-node src/scripts/debug-email.ts",
