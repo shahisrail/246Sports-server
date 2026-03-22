@@ -42,6 +42,7 @@ exports.createDefaultAdminUser = createDefaultAdminUser;
 exports.initializeDatabase = initializeDatabase;
 exports.ensureSchemaUpdates = ensureSchemaUpdates;
 exports.ensureDefaultSportsAndPositions = ensureDefaultSportsAndPositions;
+exports.ensureEmailSubscriptionsFix = ensureEmailSubscriptionsFix;
 exports.ensureDatabaseSetup = ensureDatabaseSetup;
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
@@ -361,6 +362,51 @@ async function ensureDefaultSportsAndPositions(pool) {
         console.error("❌ Error seeding sports data:", error?.message || error);
     }
 }
+async function ensureEmailSubscriptionsFix(pool) {
+    try {
+        console.log("🔧 Checking email subscriptions fix...");
+        // Check if the function needs to be fixed
+        const functionCheck = await pool.query(`
+      SELECT routine_name, routine_type
+      FROM information_schema.routines
+      WHERE routine_schema = 'public'
+      AND routine_name = 'get_association_subscribers'
+    `);
+        if (functionCheck.rows.length > 0) {
+            console.log("⚠️  Function exists but may have wrong signature, fixing...");
+            // Drop and recreate with correct signature
+            await pool.query(`
+        DROP FUNCTION IF EXISTS get_association_subscribers(UUID);
+
+        CREATE OR REPLACE FUNCTION get_association_subscribers(p_association_id UUID)
+        RETURNS TABLE(id UUID, email VARCHAR, status VARCHAR, subscription_date TIMESTAMP, preferences JSONB) AS $$
+        BEGIN
+            RETURN QUERY
+            SELECT s.id, s.email, s.status, s.subscription_date, s.preferences
+            FROM email_subscriptions s
+            WHERE s.association_id = p_association_id
+            AND s.deleted_at IS NULL;
+        END;
+        $$ LANGUAGE plpgsql;
+      `);
+            console.log("✅ Email subscriptions function fixed");
+        }
+        // Ensure the view exists
+        await pool.query(`
+      DROP VIEW IF EXISTS active_subscribers;
+      CREATE VIEW active_subscribers AS
+      SELECT s.*, a.name as association_name
+      FROM email_subscriptions s
+      LEFT JOIN associations a ON s.association_id = a.id
+      WHERE s.status = 'ACTIVE' AND s.deleted_at IS NULL;
+    `);
+        console.log("✅ Email subscriptions fix applied");
+    }
+    catch (error) {
+        console.warn("⚠️  Email subscriptions fix warning:", error?.message || error);
+        // Don't throw - this is not critical
+    }
+}
 async function ensureDatabaseSetup(pool) {
     try {
         const tablesExist = await checkTablesExist(pool);
@@ -374,6 +420,8 @@ async function ensureDatabaseSetup(pool) {
             }
             // ALWAYS run schema updates to ensure production is in sync
             await ensureSchemaUpdates(pool);
+            // CRITICAL: Fix email subscriptions (this fixes the 500 error)
+            await ensureEmailSubscriptionsFix(pool);
             // Ensure sports and positions are seeded
             await ensureDefaultSportsAndPositions(pool);
             return true;
