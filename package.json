@@ -6,9 +6,18 @@
   "scripts": {
     "dev": "nodemon",
     "build": "tsc",
-    "postinstall": "npm run build",
     "start": "node dist/server.js",
-    "prestart": "npm run build"
+    "start:prod": "NODE_ENV=production node dist/server.js",
+    "start:check": "node scripts/startup-check.js",
+    "db:migrate": "./database/migrate.sh",
+    "db:setup": "psql -U postgres -d sports_db -f database/schema.sql",
+    "db:seed": "psql -U postgres -d sports_db -f database/seeds.sql",
+    "test": "echo \"Tests not yet implemented\" && exit 1",
+    "test:email": "ts-node src/scripts/test-email.ts",
+    "debug:email": "ts-node src/scripts/debug-email.ts",
+    "setup:ethereal": "ts-node src/scripts/ethereal-setup.ts",
+    "build:check": "tsc --noEmit",
+    "clean": "rm -rf dist"
   },
   "keywords": [
     "sports",
