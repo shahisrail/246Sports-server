@@ -508,9 +508,10 @@ const createSportPosition = async (req, res) => {
             (0, responseHandler_1.errorResponse)(res, 'Unauthorized', 401, 'UNAUTHORIZED');
             return;
         }
-        // Only Super Admin can create sport positions
-        if (req.user.role !== 'SUPER_ADMIN') {
-            (0, responseHandler_1.errorResponse)(res, 'Forbidden - Super Admin only', 403, 'FORBIDDEN');
+        // Allowed roles for managing sport positions
+        const allowedRoles = [types_1.UserRole.SUPER_ADMIN, types_1.UserRole.ASSOCIATION_ADMIN, types_1.UserRole.CLUB_ADMIN, types_1.UserRole.TEAM_MANAGER];
+        if (!allowedRoles.includes(req.user.role)) {
+            (0, responseHandler_1.errorResponse)(res, 'Forbidden - Unauthorized role', 403, 'FORBIDDEN');
             return;
         }
         const { sport_id, name, abbreviation, description, display_order = 0, is_active = true } = req.body;
@@ -581,9 +582,10 @@ const updateSportPosition = async (req, res) => {
             (0, responseHandler_1.errorResponse)(res, 'Unauthorized', 401, 'UNAUTHORIZED');
             return;
         }
-        // Only Super Admin can update sport positions
-        if (req.user.role !== 'SUPER_ADMIN') {
-            (0, responseHandler_1.errorResponse)(res, 'Forbidden - Super Admin only', 403, 'FORBIDDEN');
+        // Allowed roles for managing sport positions
+        const allowedRoles = [types_1.UserRole.SUPER_ADMIN, types_1.UserRole.ASSOCIATION_ADMIN, types_1.UserRole.CLUB_ADMIN, types_1.UserRole.TEAM_MANAGER];
+        if (!allowedRoles.includes(req.user.role)) {
+            (0, responseHandler_1.errorResponse)(res, 'Forbidden - Unauthorized role', 403, 'FORBIDDEN');
             return;
         }
         const { id } = req.params;
@@ -656,9 +658,10 @@ const deleteSportPosition = async (req, res) => {
             (0, responseHandler_1.errorResponse)(res, 'Unauthorized', 401, 'UNAUTHORIZED');
             return;
         }
-        // Only Super Admin can delete sport positions
-        if (req.user.role !== 'SUPER_ADMIN') {
-            (0, responseHandler_1.errorResponse)(res, 'Forbidden - Super Admin only', 403, 'FORBIDDEN');
+        // Allowed roles for managing sport positions
+        const allowedRoles = [types_1.UserRole.SUPER_ADMIN, types_1.UserRole.ASSOCIATION_ADMIN, types_1.UserRole.CLUB_ADMIN, types_1.UserRole.TEAM_MANAGER];
+        if (!allowedRoles.includes(req.user.role)) {
+            (0, responseHandler_1.errorResponse)(res, 'Forbidden - Unauthorized role', 403, 'FORBIDDEN');
             return;
         }
         const { id } = req.params;

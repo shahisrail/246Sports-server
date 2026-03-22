@@ -98,11 +98,19 @@ CREATE TABLE IF NOT EXISTS competitions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     association_id UUID REFERENCES associations(id) ON DELETE CASCADE,
     season_id UUID REFERENCES seasons(id) ON DELETE SET NULL,
+    sport_id UUID REFERENCES sports(id),
     name VARCHAR(255) NOT NULL,
     sport VARCHAR(100),
-    category VARCHAR(50) CHECK (category IN ('LEAGUE', 'CUP', 'TOURNAMENT')),
-    status VARCHAR(50) CHECK (status IN ('UPCOMING', 'ONGOING', 'COMPLETED')),
+    category VARCHAR(50) CHECK (category IN ('LEAGUE', 'CUP', 'TOURNAMENT', 'OTHER')),
+    status VARCHAR(50) CHECK (status IN ('UPCOMING', 'ONGOING', 'COMPLETED', 'CANCELLED')),
+    format VARCHAR(100),
+    description TEXT,
     rules TEXT,
+    start_date DATE,
+    end_date DATE,
+    website TEXT,
+    contact_email VARCHAR(255),
+    contact_phone VARCHAR(50),
     points_win INTEGER DEFAULT 3,
     points_draw INTEGER DEFAULT 1,
     points_loss INTEGER DEFAULT 0,
@@ -334,15 +342,64 @@ CREATE TABLE IF NOT EXISTS media (
 -- Email subscriptions table
 CREATE TABLE IF NOT EXISTS email_subscriptions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    email VARCHAR(255) NOT NULL UNIQUE,
+    email VARCHAR(255) NOT NULL,
     association_id UUID REFERENCES associations(id) ON DELETE CASCADE,
+    unsubscribe_token UUID DEFAULT uuid_generate_v4(),
     status VARCHAR(20) DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'UNSUBSCRIBED', 'BOUNCED')),
+    preferences JSONB DEFAULT '{"news": true, "fixtures": true, "results": true}',
     ip_address VARCHAR(50),
     subscribed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    subscription_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     unsubscribed_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP,
+    UNIQUE(email, association_id)
 );
+
+-- Email subscription functions and views
+CREATE OR REPLACE FUNCTION is_subscribed_to_association(p_email TEXT, p_association_id UUID) 
+RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN EXISTS (
+        SELECT 1 FROM email_subscriptions 
+        WHERE LOWER(email) = LOWER(p_email) 
+        AND association_id = p_association_id 
+        AND status = 'ACTIVE'
+        AND deleted_at IS NULL
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION unsubscribe_by_token(p_token UUID) 
+RETURNS BOOLEAN AS $$
+BEGIN
+    UPDATE email_subscriptions 
+    SET status = 'UNSUBSCRIBED', 
+        unsubscribed_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE unsubscribe_token = p_token;
+    
+    RETURN FOUND;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_association_subscribers(p_association_id UUID) 
+RETURNS TABLE(id UUID, email VARCHAR, status VARCHAR, subscription_date TIMESTAMP, preferences JSONB) AS $$
+BEGIN
+    RETURN QUERY 
+    SELECT s.id, s.email, s.status, s.subscription_date, s.preferences
+    FROM email_subscriptions s
+    WHERE s.association_id = p_association_id
+    AND s.deleted_at IS NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE VIEW active_subscribers AS
+SELECT s.*, a.name as association_name
+FROM email_subscriptions s
+LEFT JOIN associations a ON s.association_id = a.id
+WHERE s.status = 'ACTIVE' AND s.deleted_at IS NULL;
 
 -- User invitations table
 CREATE TABLE IF NOT EXISTS user_invitations (

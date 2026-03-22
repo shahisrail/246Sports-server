@@ -203,14 +203,90 @@ export async function ensureSchemaUpdates(pool: Pool): Promise<void> {
       'ALTER TABLE sports ADD COLUMN IF NOT EXISTS display_order INTEGER DEFAULT 0',
       'ALTER TABLE sports ADD COLUMN IF NOT EXISTS metadata JSONB',
       'ALTER TABLE sports ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP',
-      'ALTER TABLE players ADD COLUMN IF NOT EXISTS sport_id UUID REFERENCES sports(id)'
+      'ALTER TABLE players ADD COLUMN IF NOT EXISTS sport_id UUID REFERENCES sports(id)',
+      // Competition missing columns
+      'ALTER TABLE competitions ADD COLUMN IF NOT EXISTS sport_id UUID REFERENCES sports(id)',
+      'ALTER TABLE competitions ADD COLUMN IF NOT EXISTS sport VARCHAR(100)',
+      'ALTER TABLE competitions ADD COLUMN IF NOT EXISTS format VARCHAR(100)',
+      'ALTER TABLE competitions ADD COLUMN IF NOT EXISTS description TEXT',
+      'ALTER TABLE competitions ADD COLUMN IF NOT EXISTS start_date DATE',
+      'ALTER TABLE competitions ADD COLUMN IF NOT EXISTS end_date DATE',
+      'ALTER TABLE competitions ADD COLUMN IF NOT EXISTS website TEXT',
+      'ALTER TABLE competitions ADD COLUMN IF NOT EXISTS contact_email VARCHAR(255)',
+      'ALTER TABLE competitions ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(50)',
+      'ALTER TABLE competitions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP',
+      // Email subscriptions missing columns
+      'ALTER TABLE email_subscriptions DROP CONSTRAINT IF EXISTS email_subscriptions_email_key',
+      'ALTER TABLE email_subscriptions ADD COLUMN IF NOT EXISTS unsubscribe_token UUID DEFAULT uuid_generate_v4()',
+      'ALTER TABLE email_subscriptions ADD COLUMN IF NOT EXISTS preferences JSONB DEFAULT \'{"news": true, "fixtures": true, "results": true}\'',
+      'ALTER TABLE email_subscriptions ADD COLUMN IF NOT EXISTS subscription_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+      'ALTER TABLE email_subscriptions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP',
+      'ALTER TABLE email_subscriptions ADD CONSTRAINT email_subscriptions_email_association_key UNIQUE (email, association_id)'
     ];
 
     for (const updateQuery of otherUpdates) {
       try {
         await pool.query(updateQuery);
       } catch (err: any) {
-        if (err.code !== '42701') throw err;
+        // 42701: column already exists, 42P07: relation already exists, 42804: datatype mismatch (ignore for now)
+        if (err.code !== '42701' && err.code !== '42P07') {
+          console.warn(`⚠️ Warning applying update: ${updateQuery}`);
+          console.warn(`   Error: ${err.message} (Code: ${err.code})`);
+        }
+      }
+    }
+
+    // 4. Create missing functions and views
+    const additionalSchema = [
+      `CREATE OR REPLACE FUNCTION is_subscribed_to_association(p_email TEXT, p_association_id UUID) 
+       RETURNS BOOLEAN AS $$
+       BEGIN
+           RETURN EXISTS (
+               SELECT 1 FROM email_subscriptions 
+               WHERE LOWER(email) = LOWER(p_email) 
+               AND association_id = p_association_id 
+               AND status = 'ACTIVE'
+               AND deleted_at IS NULL
+           );
+       END;
+       $$ LANGUAGE plpgsql;`,
+
+      `CREATE OR REPLACE FUNCTION unsubscribe_by_token(p_token UUID) 
+       RETURNS BOOLEAN AS $$
+       BEGIN
+           UPDATE email_subscriptions 
+           SET status = 'UNSUBSCRIBED', 
+               unsubscribed_at = CURRENT_TIMESTAMP,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE unsubscribe_token = p_token;
+           
+           RETURN FOUND;
+       END;
+       $$ LANGUAGE plpgsql;`,
+
+      `CREATE OR REPLACE FUNCTION get_association_subscribers(p_association_id UUID) 
+       RETURNS TABLE(id UUID, email VARCHAR, status VARCHAR, subscription_date TIMESTAMP, preferences JSONB) AS $$
+       BEGIN
+           RETURN QUERY 
+           SELECT s.id, s.email, s.status, s.subscription_date, s.preferences
+           FROM email_subscriptions s
+           WHERE s.association_id = p_association_id
+           AND s.deleted_at IS NULL;
+       END;
+       $$ LANGUAGE plpgsql;`,
+
+      `CREATE OR REPLACE VIEW active_subscribers AS
+       SELECT s.*, a.name as association_name
+       FROM email_subscriptions s
+       LEFT JOIN associations a ON s.association_id = a.id
+       WHERE s.status = 'ACTIVE' AND s.deleted_at IS NULL;`
+    ];
+
+    for (const schemaQuery of additionalSchema) {
+      try {
+        await pool.query(schemaQuery);
+      } catch (err: any) {
+        console.error(`❌ Error creating schema object: ${err.message}`);
       }
     }
 

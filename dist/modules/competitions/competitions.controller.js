@@ -282,7 +282,6 @@ const createCompetition = async (req, res) => {
         // Support both camelCase and snake_case
         const finalAssociationId = associationId || association_id;
         const finalSeasonId = seasonId || season_id;
-        const finalSportId = sport_id || sport; // Support both sport_id (new) and sport (legacy)
         const finalCategory = type || category; // type from frontend = category in backend
         const finalStartDate = startDate || start_date;
         const finalEndDate = endDate || end_date;
@@ -292,9 +291,16 @@ const createCompetition = async (req, res) => {
         const finalPointsWin = pointsWin !== undefined ? pointsWin : points_win;
         const finalPointsDraw = pointsDraw !== undefined ? pointsDraw : points_draw;
         const finalPointsLoss = pointsLoss !== undefined ? pointsLoss : points_loss;
+        // UUID Regex for validation
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         // TENANT ISOLATION: Validate association access
         if (req.user.role === types_1.UserRole.ASSOCIATION_ADMIN && finalAssociationId !== req.user.associationId) {
             (0, responseHandler_1.errorResponse)(res, 'You can only create competitions for your own association', 403, 'ASSOCIATION_MISMATCH');
+            return;
+        }
+        // Validate association_id is a valid UUID
+        if (finalAssociationId && !uuidRegex.test(finalAssociationId)) {
+            (0, responseHandler_1.errorResponse)(res, 'Invalid association_id format', 400, 'INVALID_ASSOCIATION_ID');
             return;
         }
         // Club admins and team managers cannot create competitions
@@ -302,29 +308,54 @@ const createCompetition = async (req, res) => {
             (0, responseHandler_1.errorResponse)(res, 'You do not have permission to create competitions', 403, 'INSUFFICIENT_PERMISSIONS');
             return;
         }
+        // Handle sport_id and sport name properly
+        let resolvedSportId = null;
+        let resolvedSportName = sport || null;
+        if (sport_id) {
+            if (uuidRegex.test(sport_id)) {
+                resolvedSportId = sport_id;
+            }
+            else {
+                // If sport_id is not a UUID, it might be the sport name
+                resolvedSportName = sport_id;
+            }
+        }
+        // If we have a name but no UUID, try to look up the UUID
+        if (!resolvedSportId && resolvedSportName) {
+            const sportResult = await (0, database_1.query)('SELECT id, name FROM sports WHERE LOWER(name) = LOWER($1) OR LOWER(slug) = LOWER($1) AND deleted_at IS NULL', [resolvedSportName]);
+            if (sportResult.rows.length > 0) {
+                resolvedSportId = sportResult.rows[0].id;
+                resolvedSportName = sportResult.rows[0].name;
+            }
+        }
+        // Validate season_id if provided
+        if (finalSeasonId && !uuidRegex.test(finalSeasonId)) {
+            (0, responseHandler_1.errorResponse)(res, 'Invalid season_id format', 400, 'INVALID_SEASON_ID');
+            return;
+        }
         const competitionId = (0, uuid_1.v4)();
         console.log('CREATE COMPETITION - Debug:', {
             name,
+            resolvedSportId,
+            resolvedSportName,
             type,
             finalCategory,
             format,
             description,
             finalStartDate,
             finalEndDate,
-            finalWebsite,
-            finalContactEmail,
-            finalContactPhone,
         });
         const result = await (0, database_1.query)(`INSERT INTO competitions (
-        id, name, sport_id, association_id, season_id, category, status, rules,
+        id, name, sport_id, sport, association_id, season_id, category, status, rules,
         format, description, start_date, end_date, website, contact_email, contact_phone,
         points_win, points_draw, points_loss
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
        RETURNING *`, [
             competitionId,
             name,
-            finalSportId || null,
+            resolvedSportId,
+            resolvedSportName,
             finalAssociationId,
             finalSeasonId || null,
             finalCategory || types_1.CompetitionCategory.LEAGUE,
@@ -343,7 +374,7 @@ const createCompetition = async (req, res) => {
         ]);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.CREATE, 'COMPETITION', competitionId, JSON.stringify({ name, sport })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.CREATE, 'COMPETITION', competitionId, JSON.stringify({ name, sport: resolvedSportName })]);
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'Competition created successfully', 201);
     }
     catch (error) {

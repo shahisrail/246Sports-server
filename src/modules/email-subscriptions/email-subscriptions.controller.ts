@@ -284,6 +284,15 @@ export const getSubscriptionStatus = async (
       return;
     }
 
+    const associationIdStr = association_id.toString();
+
+    // Validate UUID format for association_id
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(associationIdStr)) {
+      errorResponse(res, 'Invalid association_id format', 400, 'INVALID_ASSOCIATION_ID');
+      return;
+    }
+
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email.toString())) {
@@ -294,10 +303,10 @@ export const getSubscriptionStatus = async (
     // Use database function to check subscription status
     const isSubscribed = await query(
       `SELECT is_subscribed_to_association($1, $2) as subscribed`,
-      [email, association_id]
+      [email, associationIdStr]
     );
 
-    const subscribed = isSubscribed.rows[0].subscribed;
+    const subscribed = isSubscribed.rows[0]?.subscribed || false;
 
     if (!subscribed) {
       successResponse(res, { subscribed: false }, 'Not subscribed');
@@ -309,7 +318,7 @@ export const getSubscriptionStatus = async (
       `SELECT status, preferences, subscription_date
        FROM email_subscriptions
        WHERE LOWER(email) = LOWER($1) AND association_id = $2 AND deleted_at IS NULL`,
-      [email, association_id]
+      [email, associationIdStr]
     );
 
     if (result.rows.length === 0) {
@@ -324,13 +333,13 @@ export const getSubscriptionStatus = async (
       {
         subscribed: subscription.status === 'ACTIVE',
         status: subscription.status,
-        preferences: subscription.preferences,
+        preferences: typeof subscription.preferences === 'string' ? JSON.parse(subscription.preferences) : subscription.preferences,
         subscriptionDate: subscription.subscription_date,
       },
       'Subscription status retrieved'
     );
   } catch (error) {
-    console.error('Get subscription status error:', error);
+    console.error('Get subscription status error details:', error);
     errorResponse(res, 'Failed to get subscription status', 500, 'GET_STATUS_FAILED');
   }
 };

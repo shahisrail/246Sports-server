@@ -5,6 +5,7 @@ import { successResponse, errorResponse, paginatedResponse } from '../../utils/r
 import { AuthRequest } from '../../types';
 import {
   AuditAction,
+  UserRole,
 } from '../../types';
 
 /**
@@ -615,9 +616,10 @@ export const createSportPosition = async (req: AuthRequest, res: Response): Prom
       return;
     }
 
-    // Only Super Admin can create sport positions
-    if (req.user.role !== 'SUPER_ADMIN') {
-      errorResponse(res, 'Forbidden - Super Admin only', 403, 'FORBIDDEN');
+    // Allowed roles for managing sport positions
+    const allowedRoles = [UserRole.SUPER_ADMIN, UserRole.ASSOCIATION_ADMIN, UserRole.CLUB_ADMIN, UserRole.TEAM_MANAGER];
+    if (!allowedRoles.includes(req.user.role)) {
+      errorResponse(res, 'Forbidden - Unauthorized role', 403, 'FORBIDDEN');
       return;
     }
 
@@ -701,9 +703,10 @@ export const updateSportPosition = async (req: AuthRequest, res: Response): Prom
       return;
     }
 
-    // Only Super Admin can update sport positions
-    if (req.user.role !== 'SUPER_ADMIN') {
-      errorResponse(res, 'Forbidden - Super Admin only', 403, 'FORBIDDEN');
+    // Allowed roles for managing sport positions
+    const allowedRoles = [UserRole.SUPER_ADMIN, UserRole.ASSOCIATION_ADMIN, UserRole.CLUB_ADMIN, UserRole.TEAM_MANAGER];
+    if (!allowedRoles.includes(req.user.role)) {
+      errorResponse(res, 'Forbidden - Unauthorized role', 403, 'FORBIDDEN');
       return;
     }
 
@@ -794,9 +797,10 @@ export const deleteSportPosition = async (req: AuthRequest, res: Response): Prom
       return;
     }
 
-    // Only Super Admin can delete sport positions
-    if (req.user.role !== 'SUPER_ADMIN') {
-      errorResponse(res, 'Forbidden - Super Admin only', 403, 'FORBIDDEN');
+    // Allowed roles for managing sport positions
+    const allowedRoles = [UserRole.SUPER_ADMIN, UserRole.ASSOCIATION_ADMIN, UserRole.CLUB_ADMIN, UserRole.TEAM_MANAGER];
+    if (!allowedRoles.includes(req.user.role)) {
+      errorResponse(res, 'Forbidden - Unauthorized role', 403, 'FORBIDDEN');
       return;
     }
 

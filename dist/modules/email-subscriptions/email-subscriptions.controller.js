@@ -267,6 +267,13 @@ const getSubscriptionStatus = async (req, res) => {
             (0, responseHandler_1.errorResponse)(res, 'Email and association_id are required', 400, 'MISSING_FIELDS');
             return;
         }
+        const associationIdStr = association_id.toString();
+        // Validate UUID format for association_id
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(associationIdStr)) {
+            (0, responseHandler_1.errorResponse)(res, 'Invalid association_id format', 400, 'INVALID_ASSOCIATION_ID');
+            return;
+        }
         // Validate email format
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(email.toString())) {
@@ -274,8 +281,8 @@ const getSubscriptionStatus = async (req, res) => {
             return;
         }
         // Use database function to check subscription status
-        const isSubscribed = await (0, database_1.query)(`SELECT is_subscribed_to_association($1, $2) as subscribed`, [email, association_id]);
-        const subscribed = isSubscribed.rows[0].subscribed;
+        const isSubscribed = await (0, database_1.query)(`SELECT is_subscribed_to_association($1, $2) as subscribed`, [email, associationIdStr]);
+        const subscribed = isSubscribed.rows[0]?.subscribed || false;
         if (!subscribed) {
             (0, responseHandler_1.successResponse)(res, { subscribed: false }, 'Not subscribed');
             return;
@@ -283,7 +290,7 @@ const getSubscriptionStatus = async (req, res) => {
         // Get full subscription details
         const result = await (0, database_1.query)(`SELECT status, preferences, subscription_date
        FROM email_subscriptions
-       WHERE LOWER(email) = LOWER($1) AND association_id = $2 AND deleted_at IS NULL`, [email, association_id]);
+       WHERE LOWER(email) = LOWER($1) AND association_id = $2 AND deleted_at IS NULL`, [email, associationIdStr]);
         if (result.rows.length === 0) {
             (0, responseHandler_1.successResponse)(res, { subscribed: false }, 'Not subscribed');
             return;
@@ -292,12 +299,12 @@ const getSubscriptionStatus = async (req, res) => {
         (0, responseHandler_1.successResponse)(res, {
             subscribed: subscription.status === 'ACTIVE',
             status: subscription.status,
-            preferences: subscription.preferences,
+            preferences: typeof subscription.preferences === 'string' ? JSON.parse(subscription.preferences) : subscription.preferences,
             subscriptionDate: subscription.subscription_date,
         }, 'Subscription status retrieved');
     }
     catch (error) {
-        console.error('Get subscription status error:', error);
+        console.error('Get subscription status error details:', error);
         (0, responseHandler_1.errorResponse)(res, 'Failed to get subscription status', 500, 'GET_STATUS_FAILED');
     }
 };
