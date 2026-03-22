@@ -41,6 +41,7 @@ exports.checkDefaultUserExists = checkDefaultUserExists;
 exports.createDefaultAdminUser = createDefaultAdminUser;
 exports.initializeDatabase = initializeDatabase;
 exports.ensureSchemaUpdates = ensureSchemaUpdates;
+exports.ensureDefaultSportsAndPositions = ensureDefaultSportsAndPositions;
 exports.ensureDatabaseSetup = ensureDatabaseSetup;
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
@@ -242,8 +243,31 @@ async function ensureSchemaUpdates(pool) {
     }
     catch (error) {
         console.error("❌ Error updating database schema:", error?.message || error);
-        // We don't throw here to avoid stopping the server if it's already in a workable state
-        // but we log it as a major error
+    }
+}
+async function ensureDefaultSportsAndPositions(pool) {
+    try {
+        // Check if sports table has anything
+        const result = await pool.query('SELECT COUNT(*) FROM sports');
+        const count = parseInt(result.rows[0].count);
+        if (count === 0) {
+            console.log("🌱 Seeding default sports and positions...");
+            const seedPath = path_1.default.join(__dirname, "../../database/seed-sports.sql");
+            if (fs_1.default.existsSync(seedPath)) {
+                const seedSql = fs_1.default.readFileSync(seedPath, "utf8");
+                await pool.query(seedSql);
+                console.log("✅ Successfully seeded default sports and positions");
+            }
+            else {
+                console.warn("⚠️  Seed file database/seed-sports.sql not found");
+            }
+        }
+        else {
+            console.log("✅ Sports data already exists, skipping seeding");
+        }
+    }
+    catch (error) {
+        console.error("❌ Error seeding sports data:", error?.message || error);
     }
 }
 async function ensureDatabaseSetup(pool) {
@@ -259,6 +283,8 @@ async function ensureDatabaseSetup(pool) {
             }
             // ALWAYS run schema updates to ensure production is in sync
             await ensureSchemaUpdates(pool);
+            // Ensure sports and positions are seeded
+            await ensureDefaultSportsAndPositions(pool);
             return true;
         }
         else {
