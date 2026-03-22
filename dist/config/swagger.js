@@ -23,7 +23,7 @@ const options = {
                 description: 'Development server',
             },
             {
-                url: 'https://api.246sports.bb/api/v1',
+                url: 'https://api.246sports.com/api/v1',
                 description: 'Production server',
             },
         ],
