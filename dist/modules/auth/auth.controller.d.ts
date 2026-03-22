@@ -89,6 +89,38 @@ export declare const login: (req: AuthRequest, res: Response) => Promise<void>;
 export declare const getProfile: (req: AuthRequest, res: Response) => Promise<void>;
 /**
  * @swagger
+ * /auth/profile:
+ *   put:
+ *     summary: Update user profile
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               firstName:
+ *                 type: string
+ *               lastName:
+ *                 type: string
+ *               phone:
+ *                 type: string
+ *               bio:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ *       401:
+ *         description: Unauthorized
+ */
+export declare const updateProfile: (req: AuthRequest, res: Response) => Promise<void>;
+/**
+ * @swagger
  * /auth/change-password:
  *   post:
  *     summary: Change user password

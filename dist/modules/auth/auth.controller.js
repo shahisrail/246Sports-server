@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.changePassword = exports.getProfile = exports.login = exports.register = void 0;
+exports.changePassword = exports.updateProfile = exports.getProfile = exports.login = exports.register = void 0;
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const uuid_1 = require("uuid");
 const database_1 = require("../../config/database");
@@ -205,6 +205,117 @@ const getProfile = async (req, res) => {
     }
 };
 exports.getProfile = getProfile;
+/**
+ * @swagger
+ * /auth/profile:
+ *   put:
+ *     summary: Update user profile
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               firstName:
+ *                 type: string
+ *               lastName:
+ *                 type: string
+ *               phone:
+ *                 type: string
+ *               bio:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ *       401:
+ *         description: Unauthorized
+ */
+const updateProfile = async (req, res) => {
+    try {
+        if (!req.user) {
+            (0, responseHandler_1.errorResponse)(res, 'Unauthorized', 401, 'UNAUTHORIZED');
+            return;
+        }
+        const { name, firstName, lastName, phone, bio } = req.body;
+        // Build update object dynamically
+        const updates = [];
+        const values = [];
+        let paramCount = 1;
+        if (name) {
+            updates.push(`name = $${paramCount}`);
+            values.push(name);
+            paramCount++;
+        }
+        if (firstName) {
+            updates.push(`first_name = $${paramCount}`);
+            values.push(firstName);
+            paramCount++;
+        }
+        if (lastName) {
+            updates.push(`last_name = $${paramCount}`);
+            values.push(lastName);
+            paramCount++;
+        }
+        if (phone) {
+            updates.push(`phone = $${paramCount}`);
+            values.push(phone);
+            paramCount++;
+        }
+        if (bio !== undefined) {
+            updates.push(`bio = $${paramCount}`);
+            values.push(bio);
+            paramCount++;
+        }
+        if (updates.length === 0) {
+            (0, responseHandler_1.errorResponse)(res, 'No fields to update', 400, 'NO_FIELDS');
+            return;
+        }
+        // Add updated_at timestamp
+        updates.push(`updated_at = CURRENT_TIMESTAMP`);
+        // Add user ID at the end
+        values.push(req.user.userId);
+        const queryText = `
+      UPDATE users
+      SET ${updates.join(', ')}
+      WHERE id = $${paramCount}
+      RETURNING id, name, email, first_name, last_name, phone, bio, role, association_id, club_id, created_at, updated_at
+    `;
+        const result = await (0, database_1.query)(queryText, values);
+        if (result.rows.length === 0) {
+            (0, responseHandler_1.errorResponse)(res, 'User not found', 404, 'USER_NOT_FOUND');
+            return;
+        }
+        const user = result.rows[0];
+        // Convert snake_case to camelCase
+        const convertedUser = {
+            id: user.id,
+            email: user.email,
+            firstName: user.first_name,
+            lastName: user.last_name,
+            name: user.name,
+            phone: user.phone,
+            bio: user.bio,
+            role: user.role,
+            associationId: user.association_id,
+            clubId: user.club_id,
+            isActive: user.is_active,
+            createdAt: user.created_at,
+            updatedAt: user.updated_at,
+        };
+        (0, responseHandler_1.successResponse)(res, convertedUser, 'Profile updated successfully');
+    }
+    catch (error) {
+        console.error('Update profile error:', error);
+        (0, responseHandler_1.errorResponse)(res, 'Failed to update profile', 500, 'UPDATE_PROFILE_FAILED');
+    }
+};
+exports.updateProfile = updateProfile;
 /**
  * @swagger
  * /auth/change-password:
