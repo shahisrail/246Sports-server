@@ -30,6 +30,15 @@ export interface WelcomeEmailData {
   support_url: string;
 }
 
+export interface WelcomeWithCredentialsEmailData {
+  name: string;
+  email: string;
+  password: string;
+  role: string;
+  login_link: string;
+  support_url: string;
+}
+
 // Simple template renderer
 const renderTemplate = (template: string, data: Record<string, any>): string => {
   let rendered = template;
@@ -126,6 +135,29 @@ export const emailService = {
       return sent;
     } catch (error: any) {
       logger.error('Failed to send welcome email', { error: error.message, email: data.email });
+      return false;
+    }
+  },
+
+  /**
+   * Send welcome email with credentials
+   */
+  async sendWelcomeWithCredentials(data: WelcomeWithCredentialsEmailData): Promise<boolean> {
+    try {
+      const template = loadTemplate('welcome-with-credentials');
+      const html = renderTemplate(template, data);
+
+      const subject = 'Welcome to 246Sports - Your Account is Ready';
+
+      const sent = await sendEmail(data.email, subject, html);
+
+      if (sent) {
+        logger.info('Welcome with credentials email sent successfully', { email: data.email });
+      }
+
+      return sent;
+    } catch (error: any) {
+      logger.error('Failed to send welcome with credentials email', { error: error.message, email: data.email });
       return false;
     }
   },

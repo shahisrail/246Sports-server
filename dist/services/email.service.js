@@ -90,6 +90,25 @@ exports.emailService = {
         }
     },
     /**
+     * Send welcome email with credentials
+     */
+    async sendWelcomeWithCredentials(data) {
+        try {
+            const template = loadTemplate('welcome-with-credentials');
+            const html = renderTemplate(template, data);
+            const subject = 'Welcome to 246Sports - Your Account is Ready';
+            const sent = await (0, email_1.sendEmail)(data.email, subject, html);
+            if (sent) {
+                logger_1.logger.info('Welcome with credentials email sent successfully', { email: data.email });
+            }
+            return sent;
+        }
+        catch (error) {
+            logger_1.logger.error('Failed to send welcome with credentials email', { error: error.message, email: data.email });
+            return false;
+        }
+    },
+    /**
      * Send custom email (for flexibility)
      */
     async sendCustomEmail(to, subject, templateName, data) {

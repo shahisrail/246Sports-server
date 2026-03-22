@@ -10,6 +10,7 @@ const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
 const types_1 = require("../../types");
 const jwt_1 = require("../../utils/jwt");
+const email_service_1 = require("../../services/email.service");
 /**
  * @swagger
  * /users/association-admin:
@@ -113,6 +114,21 @@ const createAssociationAdmin = async (req, res) => {
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
        VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user?.userId, types_1.AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role: 'ASSOCIATION_ADMIN', association_id: finalAssociationId })]);
+        // Send welcome email with credentials
+        try {
+            await email_service_1.emailService.sendWelcomeWithCredentials({
+                name: user.name,
+                email: user.email,
+                password: password,
+                role: 'Association Admin',
+                login_link: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`,
+                support_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/support`,
+            });
+        }
+        catch (emailError) {
+            console.error('Failed to send welcome email:', emailError);
+            // Don't fail the request if email fails
+        }
         (0, responseHandler_1.successResponse)(res, {
             id: user.id,
             name: user.name,
@@ -232,6 +248,21 @@ const createClubAdmin = async (req, res) => {
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
        VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user?.userId, types_1.AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role: 'CLUB_ADMIN', club_id: finalClubId })]);
+        // Send welcome email with credentials
+        try {
+            await email_service_1.emailService.sendWelcomeWithCredentials({
+                name: user.name,
+                email: user.email,
+                password: password,
+                role: 'Club Admin',
+                login_link: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`,
+                support_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/support`,
+            });
+        }
+        catch (emailError) {
+            console.error('Failed to send welcome email:', emailError);
+            // Don't fail the request if email fails
+        }
         (0, responseHandler_1.successResponse)(res, {
             id: user.id,
             name: user.name,
@@ -594,6 +625,21 @@ const createSuperAdmin = async (req, res) => {
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
        VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user?.userId, types_1.AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role: 'SUPER_ADMIN' })]);
+        // Send welcome email with credentials
+        try {
+            await email_service_1.emailService.sendWelcomeWithCredentials({
+                name: user.name,
+                email: user.email,
+                password: password,
+                role: 'Super Admin',
+                login_link: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`,
+                support_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/support`,
+            });
+        }
+        catch (emailError) {
+            console.error('Failed to send welcome email:', emailError);
+            // Don't fail the request if email fails
+        }
         (0, responseHandler_1.successResponse)(res, user, 'Super Admin created successfully', 201);
     }
     catch (error) {

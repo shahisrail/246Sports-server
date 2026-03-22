@@ -21,6 +21,14 @@ export interface WelcomeEmailData {
     login_link: string;
     support_url: string;
 }
+export interface WelcomeWithCredentialsEmailData {
+    name: string;
+    email: string;
+    password: string;
+    role: string;
+    login_link: string;
+    support_url: string;
+}
 export declare const emailService: {
     /**
      * Send invitation email
@@ -34,6 +42,10 @@ export declare const emailService: {
      * Send welcome email
      */
     sendWelcome(data: WelcomeEmailData): Promise<boolean>;
+    /**
+     * Send welcome email with credentials
+     */
+    sendWelcomeWithCredentials(data: WelcomeWithCredentialsEmailData): Promise<boolean>;
     /**
      * Send custom email (for flexibility)
      */
