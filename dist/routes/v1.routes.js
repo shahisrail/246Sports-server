@@ -36,13 +36,136 @@ const router = express_1.default.Router();
  *   name: API v1
  *   description: Version 1 of the 246Sports API
  */
+/**
+ * @swagger
+ * /api/v1/auth/refresh:
+ *   post:
+ *     summary: Refresh access token using refresh token
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - refreshToken
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *                 description: Refresh token from login
+ *     responses:
+ *       200:
+ *         description: Token refreshed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     accessToken:
+ *                       type: string
+ *                     refreshToken:
+ *                       type: string
+ *       401:
+ *         description: Invalid or expired refresh token
+ */
+router.post('/auth/refresh', auth_v2_controller_1.refreshToken);
+/**
+ * @swagger
+ * /api/v1/auth/logout:
+ *   post:
+ *     summary: Logout user and invalidate tokens
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - refreshToken
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Logged out successfully
+ *       401:
+ *         description: Unauthorized
+ */
+router.post('/auth/logout', auth_v2_controller_1.logout);
+/**
+ * @swagger
+ * /api/v1/auth/login-v2:
+ *   post:
+ *     summary: Login with enhanced session management (V2)
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               password:
+ *                 type: string
+ *                 format: password
+ *     responses:
+ *       200:
+ *         description: Login successful with refresh token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     user:
+ *                       $ref: '#/components/schemas/User'
+ *                     tokens:
+ *                       type: object
+ *                       properties:
+ *                         accessToken:
+ *                           type: string
+ *                         refreshToken:
+ *                           type: string
+ *       401:
+ *         description: Invalid credentials
+ */
+router.post('/auth/login-v2', auth_v2_controller_1.loginV2);
+/**
+ * @swagger
+ * /api/v1/auth/revoke-all:
+ *   post:
+ *     summary: Revoke all refresh tokens for current user
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: All tokens revoked
+ *       401:
+ *         description: Unauthorized
+ */
+router.post('/auth/revoke-all', auth_v2_controller_1.revokeAllTokens);
 // Mount all routes under /api/v1
 router.use('/auth', auth_routes_1.default);
-// Additional auth endpoints with refresh tokens
-router.post('/auth/refresh', auth_v2_controller_1.refreshToken);
-router.post('/auth/logout', auth_v2_controller_1.logout);
-router.post('/auth/login-v2', auth_v2_controller_1.loginV2);
-router.post('/auth/revoke-all', auth_v2_controller_1.revokeAllTokens);
 router.use('/users', users_routes_1.default);
 router.use('/sports', sports_routes_1.default);
 router.use('/associations', associations_routes_1.default);

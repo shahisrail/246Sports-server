@@ -43,11 +43,74 @@ const router = (0, express_1.Router)();
  * @swagger
  * tags:
  *   name: Standings
- *   description: Standings endpoints
+ *   description: Competition standings and league tables
  */
-// Public routes
+/**
+ * @swagger
+ * /api/v1/standings/competition/{competitionId}:
+ *   get:
+ *     summary: Get standings by competition
+ *     tags: [Standings]
+ *     parameters:
+ *       - in: path
+ *         name: competitionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Competition ID
+ *       - in: query
+ *         name: group
+ *         schema:
+ *           type: string
+ *         description: Filter by group (for group-stage competitions)
+ *     responses:
+ *       200:
+ *         description: Standings table
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Standing'
+ *       404:
+ *         description: Competition not found
+ */
 router.get('/competition/:competitionId', (0, validation_middleware_1.validateUUID)('competitionId'), standingsController.getStandingsByCompetition);
-// Protected routes
+/**
+ * @swagger
+ * /api/v1/standings/recalculate/{competitionId}:
+ *   post:
+ *     summary: Recalculate standings for a competition
+ *     tags: [Standings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: competitionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Standings recalculated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiResponse'
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Competition not found
+ */
 router.post('/recalculate/:competitionId', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(types_1.UserRole.SUPER_ADMIN, types_1.UserRole.ASSOCIATION_ADMIN), (0, validation_middleware_1.validateUUID)('competitionId'), standingsController.recalculateStandings);
 exports.default = router;
 //# sourceMappingURL=standings.routes.js.map
