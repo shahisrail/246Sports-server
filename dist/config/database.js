@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.query = exports.initDatabase = exports.pool = void 0;
 const pg_1 = require("pg");
 const dotenv_1 = __importDefault(require("dotenv"));
+const database_init_1 = require("./database-init");
 dotenv_1.default.config();
 // ❌ DO NOT EXIT (important for Coolify)
 if (!process.env.DATABASE_URL) {
@@ -20,7 +21,7 @@ exports.pool = new pg_1.Pool({
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000, // faster fail
 });
-// ✅ safe DB init (non-blocking + timeout)
+// ✅ safe DB init (non-blocking + timeout + auto-create tables)
 const initDatabase = async () => {
     try {
         const client = await Promise.race([
@@ -30,6 +31,8 @@ const initDatabase = async () => {
         await client.query("SELECT 1");
         client.release();
         console.log("✅ Database connected successfully");
+        // 🎯 AUTO-CHECK: Create tables if they don't exist
+        await (0, database_init_1.ensureDatabaseSetup)(exports.pool);
     }
     catch (error) {
         console.error("❌ Database connection failed:");

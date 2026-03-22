@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 import dotenv from "dotenv";
+import { ensureDatabaseSetup } from "./database-init";
 
 dotenv.config();
 
@@ -19,7 +20,7 @@ export const pool = new Pool({
   connectionTimeoutMillis: 5000, // faster fail
 });
 
-// ✅ safe DB init (non-blocking + timeout)
+// ✅ safe DB init (non-blocking + timeout + auto-create tables)
 export const initDatabase = async (): Promise<void> => {
   try {
     const client: any = await Promise.race([
@@ -33,6 +34,10 @@ export const initDatabase = async (): Promise<void> => {
     client.release();
 
     console.log("✅ Database connected successfully");
+
+    // 🎯 AUTO-CHECK: Create tables if they don't exist
+    await ensureDatabaseSetup(pool);
+
   } catch (error: any) {
     console.error("❌ Database connection failed:");
     console.error(error?.message || error);
