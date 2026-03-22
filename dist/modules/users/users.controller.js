@@ -5,8 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteUser = exports.updateUser = exports.getUserById = exports.getUsers = exports.loginAsUser = exports.makeSuperAdmin = exports.createCoach = exports.createTeamManager = exports.createCompetitionManager = exports.createClubAdmin = exports.createAssociationAdmin = void 0;
 const bcrypt_1 = __importDefault(require("bcrypt"));
-const uuid_1 = __importDefault(require("uuid"));
-const { v4: uuidv4 } = uuid_1.default;
+const { v4: uuidv4 } = require("uuid");
 const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
 const types_1 = require("../../types");

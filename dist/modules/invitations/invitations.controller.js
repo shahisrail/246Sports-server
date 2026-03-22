@@ -4,8 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.resendInvitation = exports.cancelInvitation = exports.getInvitations = exports.completeInvitation = exports.acceptInvitation = void 0;
-const uuid_1 = __importDefault(require("uuid"));
-const { v4: uuidv4 } = uuid_1.default;
+const { v4: uuidv4 } = require("uuid");
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");

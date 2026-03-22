@@ -5,8 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.revokeAllTokens = exports.loginV2 = exports.logout = exports.refreshToken = void 0;
 const bcrypt_1 = __importDefault(require("bcrypt"));
-const uuid_1 = __importDefault(require("uuid"));
-const { v4: uuidv4 } = uuid_1.default;
+const { v4: uuidv4 } = require("uuid");
 const database_1 = require("../../config/database");
 const jwt_1 = require("../../utils/jwt");
 const responseHandler_1 = require("../../utils/responseHandler");

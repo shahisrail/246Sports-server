@@ -1,11 +1,7 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getSportsStats = exports.deleteSportPosition = exports.updateSportPosition = exports.createSportPosition = exports.deleteSport = exports.updateSport = exports.createSport = exports.getSportPositions = exports.getSportById = exports.getSportsByCategory = exports.getSports = void 0;
-const uuid_1 = __importDefault(require("uuid"));
-const { v4: uuidv4 } = uuid_1.default;
+const { v4: uuidv4 } = require("uuid");
 const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
 const types_1 = require("../../types");

@@ -37,8 +37,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteNews = exports.updateNews = exports.createNews = exports.getNewsBySlug = exports.getNews = void 0;
-const uuid_1 = __importDefault(require("uuid"));
-const { v4: uuidv4 } = uuid_1.default;
+const { v4: uuidv4 } = require("uuid");
 const slugify_1 = __importDefault(require("slugify"));
 const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
