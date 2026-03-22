@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate, authorize } from '../../middleware/auth.middleware';
 import { UserRole } from '../../types';
 import {
+  createSuperAdmin,
   createAssociationAdmin,
   createClubAdmin,
   createCompetitionManager,
@@ -79,7 +80,16 @@ router.post(
   createCoach
 );
 
-// Make SUPER_ADMIN
+// Create SUPER_ADMIN
+// POST /api/v1/users/create-super-admin
+router.post(
+  '/create-super-admin',
+  authenticate,
+  authorize(UserRole.SUPER_ADMIN),
+  createSuperAdmin
+);
+
+// Make SUPER_ADMIN (promote existing user)
 // POST /api/v1/users/super-admin
 router.post(
   '/super-admin',

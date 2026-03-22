@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteClub = exports.updateClub = exports.createClub = exports.getClubById = exports.testEndpoint = exports.getPublicClubs = exports.getClubs = void 0;
+exports.uploadLogo = exports.deleteClub = exports.updateClub = exports.createClub = exports.getClubById = exports.testEndpoint = exports.getPublicClubs = exports.getClubs = void 0;
 const uuid_1 = require("uuid");
 const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
@@ -753,4 +753,78 @@ const deleteClub = async (req, res) => {
     }
 };
 exports.deleteClub = deleteClub;
+/**
+ * @swagger
+ * /clubs/{id}/logo:
+ *   post:
+ *     summary: Upload club logo
+ *     tags: [Clubs]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - logo
+ *             properties:
+ *               logo:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Logo uploaded successfully
+ */
+const uploadLogo = async (req, res) => {
+    try {
+        if (!req.user) {
+            (0, responseHandler_1.errorResponse)(res, 'Unauthorized', 401, 'UNAUTHORIZED');
+            return;
+        }
+        const { id } = req.params;
+        const existing = await (0, database_1.query)('SELECT * FROM clubs WHERE id = $1 AND deleted_at IS NULL', [id]);
+        if (existing.rows.length === 0) {
+            (0, responseHandler_1.errorResponse)(res, 'Club not found', 404, 'CLUB_NOT_FOUND');
+            return;
+        }
+        // TENANT ISOLATION: Check if user can modify this club
+        const club = existing.rows[0];
+        if (req.user.role === types_1.UserRole.ASSOCIATION_ADMIN && club.association_id !== req.user.associationId) {
+            (0, responseHandler_1.errorResponse)(res, 'You can only update clubs in your association', 403, 'ASSOCIATION_MISMATCH');
+            return;
+        }
+        if (req.user.role === types_1.UserRole.CLUB_ADMIN && req.user.clubId !== id) {
+            (0, responseHandler_1.errorResponse)(res, 'You can only update your own club', 403, 'CLUB_MISMATCH');
+            return;
+        }
+        if (!req.file) {
+            (0, responseHandler_1.errorResponse)(res, 'No file uploaded', 400, 'NO_FILE');
+            return;
+        }
+        const logoUrl = req.file.path;
+        // Update club logo
+        const result = await (0, database_1.query)('UPDATE clubs SET logo = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *', [logoUrl, id]);
+        // Log audit
+        await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.UPDATE, 'CLUB', id, JSON.stringify({ logo: logoUrl })]);
+        (0, responseHandler_1.successResponse)(res, {
+            logo: logoUrl,
+            club: result.rows[0]
+        }, 'Logo uploaded successfully');
+    }
+    catch (error) {
+        console.error('Upload logo error:', error);
+        (0, responseHandler_1.errorResponse)(res, 'Failed to upload logo', 500, 'UPLOAD_LOGO_FAILED');
+    }
+};
+exports.uploadLogo = uploadLogo;
 //# sourceMappingURL=clubs.controller.js.map

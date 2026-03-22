@@ -324,4 +324,36 @@ export declare const updateClub: (req: AuthRequest, res: Response) => Promise<vo
  *         description: Club deleted successfully
  */
 export declare const deleteClub: (req: AuthRequest, res: Response) => Promise<void>;
+/**
+ * @swagger
+ * /clubs/{id}/logo:
+ *   post:
+ *     summary: Upload club logo
+ *     tags: [Clubs]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - logo
+ *             properties:
+ *               logo:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Logo uploaded successfully
+ */
+export declare const uploadLogo: (req: AuthRequest, res: Response) => Promise<void>;
 //# sourceMappingURL=clubs.controller.d.ts.map

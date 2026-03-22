@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as associationsController from './associations.controller';
 import { authenticate, authorize } from '../../middleware/auth.middleware';
 import { validateUUID } from '../../middleware/validation.middleware';
+import { uploadImage } from '../../middleware/upload';
 import { UserRole } from '../../types';
 
 const router = Router();
@@ -37,6 +38,16 @@ router.delete(
   authorize(UserRole.SUPER_ADMIN),
   validateUUID('id'),
   associationsController.deleteAssociation
+);
+
+// Dedicated logo upload endpoint
+router.post(
+  '/:id/logo',
+  authenticate,
+  authorize(UserRole.SUPER_ADMIN, UserRole.ASSOCIATION_ADMIN),
+  validateUUID('id'),
+  uploadImage.single('logo'),
+  associationsController.uploadLogo
 );
 
 export default router;

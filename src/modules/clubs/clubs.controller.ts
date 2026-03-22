@@ -878,3 +878,95 @@ export const deleteClub = async (req: AuthRequest, res: Response): Promise<void>
     errorResponse(res, 'Failed to delete club', 500, 'DELETE_CLUB_FAILED');
   }
 };
+
+/**
+ * @swagger
+ * /clubs/{id}/logo:
+ *   post:
+ *     summary: Upload club logo
+ *     tags: [Clubs]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - logo
+ *             properties:
+ *               logo:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Logo uploaded successfully
+ */
+export const uploadLogo = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      errorResponse(res, 'Unauthorized', 401, 'UNAUTHORIZED');
+      return;
+    }
+
+    const { id } = req.params;
+
+    const existing = await query(
+      'SELECT * FROM clubs WHERE id = $1 AND deleted_at IS NULL',
+      [id]
+    );
+
+    if (existing.rows.length === 0) {
+      errorResponse(res, 'Club not found', 404, 'CLUB_NOT_FOUND');
+      return;
+    }
+
+    // TENANT ISOLATION: Check if user can modify this club
+    const club = existing.rows[0];
+    if (req.user.role === UserRole.ASSOCIATION_ADMIN && club.association_id !== req.user.associationId) {
+      errorResponse(res, 'You can only update clubs in your association', 403, 'ASSOCIATION_MISMATCH');
+      return;
+    }
+
+    if (req.user.role === UserRole.CLUB_ADMIN && req.user.clubId !== id) {
+      errorResponse(res, 'You can only update your own club', 403, 'CLUB_MISMATCH');
+      return;
+    }
+
+    if (!req.file) {
+      errorResponse(res, 'No file uploaded', 400, 'NO_FILE');
+      return;
+    }
+
+    const logoUrl = req.file.path;
+
+    // Update club logo
+    const result = await query(
+      'UPDATE clubs SET logo = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
+      [logoUrl, id]
+    );
+
+    // Log audit
+    await query(
+      `INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [uuidv4(), req.user.userId, AuditAction.UPDATE, 'CLUB', id, JSON.stringify({ logo: logoUrl })]
+    );
+
+    successResponse(res, {
+      logo: logoUrl,
+      club: result.rows[0]
+    }, 'Logo uploaded successfully');
+  } catch (error) {
+    console.error('Upload logo error:', error);
+    errorResponse(res, 'Failed to upload logo', 500, 'UPLOAD_LOGO_FAILED');
+  }
+};

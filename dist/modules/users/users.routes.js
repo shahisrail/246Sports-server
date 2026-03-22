@@ -35,7 +35,10 @@ router.post('/team-manager', auth_middleware_1.authenticate, (0, auth_middleware
 // Create Coach
 // POST /api/v1/users/coach
 router.post('/coach', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(types_1.UserRole.SUPER_ADMIN, types_1.UserRole.ASSOCIATION_ADMIN, types_1.UserRole.CLUB_ADMIN), users_controller_1.createCoach);
-// Make SUPER_ADMIN
+// Create SUPER_ADMIN
+// POST /api/v1/users/create-super-admin
+router.post('/create-super-admin', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(types_1.UserRole.SUPER_ADMIN), users_controller_1.createSuperAdmin);
+// Make SUPER_ADMIN (promote existing user)
 // POST /api/v1/users/super-admin
 router.post('/super-admin', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(types_1.UserRole.SUPER_ADMIN), users_controller_1.makeSuperAdmin);
 // Login as User

@@ -37,6 +37,7 @@ const express_1 = require("express");
 const associationsController = __importStar(require("./associations.controller"));
 const auth_middleware_1 = require("../../middleware/auth.middleware");
 const validation_middleware_1 = require("../../middleware/validation.middleware");
+const upload_1 = require("../../middleware/upload");
 const types_1 = require("../../types");
 const router = (0, express_1.Router)();
 /**
@@ -52,5 +53,7 @@ router.get('/:id', (0, validation_middleware_1.validateUUID)('id'), associations
 router.post('/', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(types_1.UserRole.SUPER_ADMIN), associationsController.createAssociation);
 router.put('/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(types_1.UserRole.SUPER_ADMIN, types_1.UserRole.ASSOCIATION_ADMIN), (0, validation_middleware_1.validateUUID)('id'), associationsController.updateAssociation);
 router.delete('/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(types_1.UserRole.SUPER_ADMIN), (0, validation_middleware_1.validateUUID)('id'), associationsController.deleteAssociation);
+// Dedicated logo upload endpoint
+router.post('/:id/logo', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(types_1.UserRole.SUPER_ADMIN, types_1.UserRole.ASSOCIATION_ADMIN), (0, validation_middleware_1.validateUUID)('id'), upload_1.uploadImage.single('logo'), associationsController.uploadLogo);
 exports.default = router;
 //# sourceMappingURL=associations.routes.js.map

@@ -426,4 +426,36 @@ export declare const updateAssociation: (req: AuthRequest, res: Response) => Pro
  *         description: Association not found
  */
 export declare const deleteAssociation: (req: AuthRequest, res: Response) => Promise<void>;
+/**
+ * @swagger
+ * /associations/{id}/logo:
+ *   post:
+ *     summary: Upload association logo
+ *     tags: [Associations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - logo
+ *             properties:
+ *               logo:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Logo uploaded successfully
+ */
+export declare const uploadLogo: (req: AuthRequest, res: Response) => Promise<void>;
 //# sourceMappingURL=associations.controller.d.ts.map

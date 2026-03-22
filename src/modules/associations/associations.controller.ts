@@ -687,3 +687,84 @@ export const deleteAssociation = async (req: AuthRequest, res: Response): Promis
     errorResponse(res, 'Failed to delete association', 500, 'DELETE_ASSOCIATION_FAILED');
   }
 };
+
+/**
+ * @swagger
+ * /associations/{id}/logo:
+ *   post:
+ *     summary: Upload association logo
+ *     tags: [Associations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - logo
+ *             properties:
+ *               logo:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Logo uploaded successfully
+ */
+export const uploadLogo = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      errorResponse(res, 'Unauthorized', 401, 'UNAUTHORIZED');
+      return;
+    }
+
+    const { id } = req.params;
+
+    // Check if association exists
+    const existing = await query(
+      'SELECT * FROM associations WHERE id = $1 AND deleted_at IS NULL',
+      [id]
+    );
+
+    if (existing.rows.length === 0) {
+      errorResponse(res, 'Association not found', 404, 'ASSOCIATION_NOT_FOUND');
+      return;
+    }
+
+    if (!req.file) {
+      errorResponse(res, 'No file uploaded', 400, 'NO_FILE');
+      return;
+    }
+
+    const logoUrl = req.file.path;
+
+    // Update association logo
+    const result = await query(
+      'UPDATE associations SET logo = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
+      [logoUrl, id]
+    );
+
+    // Log audit
+    await query(
+      `INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [uuidv4(), req.user.userId, AuditAction.UPDATE, 'ASSOCIATION', id, JSON.stringify({ logo: logoUrl })]
+    );
+
+    successResponse(res, {
+      logo: logoUrl,
+      association: result.rows[0]
+    }, 'Logo uploaded successfully');
+  } catch (error) {
+    console.error('Upload logo error:', error);
+    errorResponse(res, 'Failed to upload logo', 500, 'UPLOAD_LOGO_FAILED');
+  }
+};

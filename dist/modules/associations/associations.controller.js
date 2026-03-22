@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteAssociation = exports.updateAssociation = exports.createAssociation = exports.getAssociationById = exports.getAssociations = void 0;
+exports.uploadLogo = exports.deleteAssociation = exports.updateAssociation = exports.createAssociation = exports.getAssociationById = exports.getAssociations = void 0;
 const uuid_1 = require("uuid");
 const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
@@ -602,4 +602,69 @@ const deleteAssociation = async (req, res) => {
     }
 };
 exports.deleteAssociation = deleteAssociation;
+/**
+ * @swagger
+ * /associations/{id}/logo:
+ *   post:
+ *     summary: Upload association logo
+ *     tags: [Associations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - logo
+ *             properties:
+ *               logo:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Logo uploaded successfully
+ */
+const uploadLogo = async (req, res) => {
+    try {
+        if (!req.user) {
+            (0, responseHandler_1.errorResponse)(res, 'Unauthorized', 401, 'UNAUTHORIZED');
+            return;
+        }
+        const { id } = req.params;
+        // Check if association exists
+        const existing = await (0, database_1.query)('SELECT * FROM associations WHERE id = $1 AND deleted_at IS NULL', [id]);
+        if (existing.rows.length === 0) {
+            (0, responseHandler_1.errorResponse)(res, 'Association not found', 404, 'ASSOCIATION_NOT_FOUND');
+            return;
+        }
+        if (!req.file) {
+            (0, responseHandler_1.errorResponse)(res, 'No file uploaded', 400, 'NO_FILE');
+            return;
+        }
+        const logoUrl = req.file.path;
+        // Update association logo
+        const result = await (0, database_1.query)('UPDATE associations SET logo = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *', [logoUrl, id]);
+        // Log audit
+        await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_1.AuditAction.UPDATE, 'ASSOCIATION', id, JSON.stringify({ logo: logoUrl })]);
+        (0, responseHandler_1.successResponse)(res, {
+            logo: logoUrl,
+            association: result.rows[0]
+        }, 'Logo uploaded successfully');
+    }
+    catch (error) {
+        console.error('Upload logo error:', error);
+        (0, responseHandler_1.errorResponse)(res, 'Failed to upload logo', 500, 'UPLOAD_LOGO_FAILED');
+    }
+};
+exports.uploadLogo = uploadLogo;
 //# sourceMappingURL=associations.controller.js.map

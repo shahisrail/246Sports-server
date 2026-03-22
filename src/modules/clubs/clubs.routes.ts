@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as clubsController from './clubs.controller';
 import { authenticate, authorize, checkClubAccess } from '../../middleware/auth.middleware';
 import { validateUUID, validateCreateClub } from '../../middleware/validation.middleware';
+import { uploadImage } from '../../middleware/upload';
 import { UserRole } from '../../types';
 
 const router = Router();
@@ -43,6 +44,17 @@ router.delete(
   authorize(UserRole.SUPER_ADMIN, UserRole.ASSOCIATION_ADMIN),
   validateUUID('id'),
   clubsController.deleteClub
+);
+
+// Dedicated logo upload endpoint
+router.post(
+  '/:id/logo',
+  authenticate,
+  authorize(UserRole.SUPER_ADMIN, UserRole.ASSOCIATION_ADMIN, UserRole.CLUB_ADMIN),
+  validateUUID('id'),
+  checkClubAccess,
+  uploadImage.single('logo'),
+  clubsController.uploadLogo
 );
 
 export default router;

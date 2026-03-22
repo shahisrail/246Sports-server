@@ -315,6 +315,48 @@ export declare const createTeamManager: (req: AuthRequest, res: Response) => Pro
 export declare const createCoach: (req: AuthRequest, res: Response) => Promise<void>;
 /**
  * @swagger
+ * /users/create-super-admin:
+ *   post:
+ *     summary: Create a new SUPER_ADMIN (System Admin)
+ *     description: Creates a new user with SUPER_ADMIN role from scratch. Only existing SUPER_ADMIN users can perform this action.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - name
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: Super Admin's email address
+ *               name:
+ *                 type: string
+ *                 description: Super Admin's full name
+ *               password:
+ *                 type: string
+ *                 minLength: 8
+ *                 description: Super Admin's password (minimum 8 characters)
+ *     responses:
+ *       201:
+ *         description: Super Admin created successfully
+ *       400:
+ *         description: Invalid input or user already exists
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Only SUPER_ADMIN can create Super Admins
+ */
+export declare const createSuperAdmin: (req: AuthRequest, res: Response) => Promise<void>;
+/**
+ * @swagger
  * /users/super-admin:
  *   post:
  *     summary: Make a user a SUPER_ADMIN (System Admin)

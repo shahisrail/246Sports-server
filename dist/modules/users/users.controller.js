@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteUser = exports.updateUser = exports.getUserById = exports.getUsers = exports.loginAsUser = exports.makeSuperAdmin = exports.createCoach = exports.createTeamManager = exports.createCompetitionManager = exports.createClubAdmin = exports.createAssociationAdmin = void 0;
+exports.deleteUser = exports.updateUser = exports.getUserById = exports.getUsers = exports.loginAsUser = exports.makeSuperAdmin = exports.createSuperAdmin = exports.createCoach = exports.createTeamManager = exports.createCompetitionManager = exports.createClubAdmin = exports.createAssociationAdmin = void 0;
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const uuid_1 = require("uuid");
 const database_1 = require("../../config/database");
@@ -528,6 +528,80 @@ const createCoach = async (req, res) => {
     }
 };
 exports.createCoach = createCoach;
+/**
+ * @swagger
+ * /users/create-super-admin:
+ *   post:
+ *     summary: Create a new SUPER_ADMIN (System Admin)
+ *     description: Creates a new user with SUPER_ADMIN role from scratch. Only existing SUPER_ADMIN users can perform this action.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - name
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: Super Admin's email address
+ *               name:
+ *                 type: string
+ *                 description: Super Admin's full name
+ *               password:
+ *                 type: string
+ *                 minLength: 8
+ *                 description: Super Admin's password (minimum 8 characters)
+ *     responses:
+ *       201:
+ *         description: Super Admin created successfully
+ *       400:
+ *         description: Invalid input or user already exists
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Only SUPER_ADMIN can create Super Admins
+ */
+const createSuperAdmin = async (req, res) => {
+    try {
+        const { email, name, password } = req.body;
+        // Validate required fields
+        if (!email || !name || !password) {
+            (0, responseHandler_1.errorResponse)(res, 'Email, name, and password are required', 400, 'MISSING_FIELDS');
+            return;
+        }
+        // Check if user already exists
+        const existingUser = await (0, database_1.query)('SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL', [email]);
+        if (existingUser.rows.length > 0) {
+            (0, responseHandler_1.errorResponse)(res, 'User with this email already exists', 409, 'USER_EXISTS');
+            return;
+        }
+        // Hash password
+        const hashedPassword = await bcrypt_1.default.hash(password, 10);
+        // Create user with SUPER_ADMIN role
+        const userId = (0, uuid_1.v4)();
+        const result = await (0, database_1.query)(`INSERT INTO users (id, name, email, password, role, association_id, club_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, name, email, role, created_at`, [userId, name, email, hashedPassword, 'SUPER_ADMIN', null, null]);
+        const user = result.rows[0];
+        // Log audit
+        await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user?.userId, types_1.AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role: 'SUPER_ADMIN' })]);
+        (0, responseHandler_1.successResponse)(res, user, 'Super Admin created successfully', 201);
+    }
+    catch (error) {
+        console.error('Create super admin error:', error);
+        (0, responseHandler_1.errorResponse)(res, 'Failed to create super admin', 500, 'CREATE_SUPER_ADMIN_FAILED');
+    }
+};
+exports.createSuperAdmin = createSuperAdmin;
 /**
  * @swagger
  * /users/super-admin:

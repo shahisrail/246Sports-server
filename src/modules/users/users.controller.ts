@@ -648,6 +648,96 @@ export const createCoach = async (req: AuthRequest, res: Response): Promise<void
 
 /**
  * @swagger
+ * /users/create-super-admin:
+ *   post:
+ *     summary: Create a new SUPER_ADMIN (System Admin)
+ *     description: Creates a new user with SUPER_ADMIN role from scratch. Only existing SUPER_ADMIN users can perform this action.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - name
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: Super Admin's email address
+ *               name:
+ *                 type: string
+ *                 description: Super Admin's full name
+ *               password:
+ *                 type: string
+ *                 minLength: 8
+ *                 description: Super Admin's password (minimum 8 characters)
+ *     responses:
+ *       201:
+ *         description: Super Admin created successfully
+ *       400:
+ *         description: Invalid input or user already exists
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Only SUPER_ADMIN can create Super Admins
+ */
+export const createSuperAdmin = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { email, name, password } = req.body;
+
+    // Validate required fields
+    if (!email || !name || !password) {
+      errorResponse(res, 'Email, name, and password are required', 400, 'MISSING_FIELDS');
+      return;
+    }
+
+    // Check if user already exists
+    const existingUser = await query(
+      'SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL',
+      [email]
+    );
+
+    if (existingUser.rows.length > 0) {
+      errorResponse(res, 'User with this email already exists', 409, 'USER_EXISTS');
+      return;
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create user with SUPER_ADMIN role
+    const userId = uuidv4();
+    const result = await query(
+      `INSERT INTO users (id, name, email, password, role, association_id, club_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, name, email, role, created_at`,
+      [userId, name, email, hashedPassword, 'SUPER_ADMIN', null, null]
+    );
+
+    const user = result.rows[0];
+
+    // Log audit
+    await query(
+      `INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [uuidv4(), req.user?.userId, AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role: 'SUPER_ADMIN' })]
+    );
+
+    successResponse(res, user, 'Super Admin created successfully', 201);
+  } catch (error) {
+    console.error('Create super admin error:', error);
+    errorResponse(res, 'Failed to create super admin', 500, 'CREATE_SUPER_ADMIN_FAILED');
+  }
+};
+
+/**
+ * @swagger
  * /users/super-admin:
  *   post:
  *     summary: Make a user a SUPER_ADMIN (System Admin)
