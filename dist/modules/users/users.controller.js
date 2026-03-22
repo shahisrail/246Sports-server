@@ -5,7 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteUser = exports.updateUser = exports.getUserById = exports.getUsers = exports.loginAsUser = exports.makeSuperAdmin = exports.createCoach = exports.createTeamManager = exports.createCompetitionManager = exports.createClubAdmin = exports.createAssociationAdmin = void 0;
 const bcrypt_1 = __importDefault(require("bcrypt"));
-const { v4: uuidv4 } = require("uuid");
+const uuid_1 = require("uuid");
 const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
 const types_1 = require("../../types");
@@ -105,14 +105,14 @@ const createAssociationAdmin = async (req, res) => {
         // Hash password
         const hashedPassword = await bcrypt_1.default.hash(password, 10);
         // Create user with ASSOCIATION_ADMIN role
-        const userId = uuidv4();
+        const userId = (0, uuid_1.v4)();
         const result = await (0, database_1.query)(`INSERT INTO users (id, name, email, password, role, association_id)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, name, email, role, association_id, created_at`, [userId, name, email, hashedPassword, 'ASSOCIATION_ADMIN', finalAssociationId]);
         const user = result.rows[0];
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user?.userId, types_1.AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role: 'ASSOCIATION_ADMIN', association_id: finalAssociationId })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user?.userId, types_1.AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role: 'ASSOCIATION_ADMIN', association_id: finalAssociationId })]);
         (0, responseHandler_1.successResponse)(res, {
             id: user.id,
             name: user.name,
@@ -224,14 +224,14 @@ const createClubAdmin = async (req, res) => {
         // Hash password
         const hashedPassword = await bcrypt_1.default.hash(password, 10);
         // Create user with CLUB_ADMIN role
-        const userId = uuidv4();
+        const userId = (0, uuid_1.v4)();
         const result = await (0, database_1.query)(`INSERT INTO users (id, name, email, password, role, club_id, association_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id, name, email, role, club_id, association_id, created_at`, [userId, name, email, hashedPassword, 'CLUB_ADMIN', finalClubId, clubCheck.rows[0].association_id]);
         const user = result.rows[0];
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user?.userId, types_1.AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role: 'CLUB_ADMIN', club_id: finalClubId })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user?.userId, types_1.AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role: 'CLUB_ADMIN', club_id: finalClubId })]);
         (0, responseHandler_1.successResponse)(res, {
             id: user.id,
             name: user.name,
@@ -344,14 +344,14 @@ const createCompetitionManager = async (req, res) => {
         // Hash password
         const hashedPassword = await bcrypt_1.default.hash(password, 10);
         // Create user with COMPETITION_MANAGER role
-        const userId = uuidv4();
+        const userId = (0, uuid_1.v4)();
         const result = await (0, database_1.query)(`INSERT INTO users (id, name, email, password, role, association_id)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, name, email, role, association_id, created_at`, [userId, name, email, hashedPassword, 'COMPETITION_MANAGER', competitionCheck.rows[0].association_id]);
         const user = result.rows[0];
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user?.userId, types_1.AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role: 'COMPETITION_MANAGER', competition_id: finalCompetitionId })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user?.userId, types_1.AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role: 'COMPETITION_MANAGER', competition_id: finalCompetitionId })]);
         (0, responseHandler_1.successResponse)(res, {
             id: user.id,
             name: user.name,
@@ -434,17 +434,17 @@ const createTeamManager = async (req, res) => {
         // Hash password
         const hashedPassword = await bcrypt_1.default.hash(password, 10);
         // Create user in users table
-        const userId = uuidv4();
+        const userId = (0, uuid_1.v4)();
         const result = await (0, database_1.query)(`INSERT INTO users (id, name, email, password, role, association_id, club_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id, name, email, role, association_id, club_id, created_at`, [userId, name, email, hashedPassword, 'TEAM_MANAGER', association_id, club_id]);
         const user = result.rows[0];
         // Link user to team in team_users junction table
         await (0, database_1.query)(`INSERT INTO team_users (id, team_id, user_id, role)
-       VALUES ($1, $2, $3, $4)`, [uuidv4(), finalTeamId, userId, 'MANAGER']);
+       VALUES ($1, $2, $3, $4)`, [(0, uuid_1.v4)(), finalTeamId, userId, 'MANAGER']);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user?.userId, types_1.AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role: 'TEAM_MANAGER', team_id: finalTeamId })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user?.userId, types_1.AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role: 'TEAM_MANAGER', team_id: finalTeamId })]);
         (0, responseHandler_1.successResponse)(res, user, 'Team manager created successfully', 201);
     }
     catch (error) {
@@ -507,7 +507,7 @@ const createCoach = async (req, res) => {
             return;
         }
         const hashedPassword = await bcrypt_1.default.hash(password, 10);
-        const userId = uuidv4();
+        const userId = (0, uuid_1.v4)();
         // Create user - using TEAM_MANAGER role in users table if COACH isn't in constraint, 
         // but check schema again: role check IN ('PUBLIC', 'SUPER_ADMIN', 'ASSOCIATION_ADMIN', 'COMPETITION_MANAGER', 'CLUB_ADMIN', 'TEAM_MANAGER')
         // I should add COACH to the constraint or just use TEAM_MANAGER in users table and COACH in team_users.
@@ -517,9 +517,9 @@ const createCoach = async (req, res) => {
        RETURNING id, name, email, role, association_id, club_id, created_at`, [userId, name, email, hashedPassword, 'TEAM_MANAGER', association_id, club_id]);
         const user = result.rows[0];
         await (0, database_1.query)(`INSERT INTO team_users (id, team_id, user_id, role)
-       VALUES ($1, $2, $3, $4)`, [uuidv4(), finalTeamId, userId, 'COACH']);
+       VALUES ($1, $2, $3, $4)`, [(0, uuid_1.v4)(), finalTeamId, userId, 'COACH']);
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user?.userId, types_1.AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role: 'COACH', team_id: finalTeamId })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user?.userId, types_1.AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role: 'COACH', team_id: finalTeamId })]);
         (0, responseHandler_1.successResponse)(res, user, 'Coach created successfully', 201);
     }
     catch (error) {
@@ -588,7 +588,7 @@ const makeSuperAdmin = async (req, res) => {
        RETURNING id, name, email, role`, [userId]);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user?.userId, types_1.AuditAction.UPDATE, 'USER', userId, JSON.stringify({
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user?.userId, types_1.AuditAction.UPDATE, 'USER', userId, JSON.stringify({
                 action: 'PROMOTE_TO_SUPER_ADMIN',
                 previousRole: user.role,
                 newRole: 'SUPER_ADMIN'
@@ -664,12 +664,12 @@ const loginAsUser = async (req, res) => {
         };
         const accessToken = (0, jwt_1.generateToken)(tokenPayload);
         // Generate refresh token (long-lived: 7 days)
-        const refreshToken = uuidv4();
+        const refreshToken = (0, uuid_1.v4)();
         const refreshExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
         // Store refresh token in database
         await (0, database_1.query)(`INSERT INTO refresh_tokens (id, user_id, token, expires_at, device_info, user_agent)
        VALUES ($1, $2, $3, $4, $5, $6)`, [
-            uuidv4(),
+            (0, uuid_1.v4)(),
             user.id,
             refreshToken,
             refreshExpiresAt,
@@ -678,7 +678,7 @@ const loginAsUser = async (req, res) => {
         ]);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user?.userId, types_1.AuditAction.LOGIN, 'USER', userId, JSON.stringify({
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user?.userId, types_1.AuditAction.LOGIN, 'USER', userId, JSON.stringify({
                 action: 'LOGIN_AS_USER',
                 adminEmail: req.user?.email,
                 targetUserEmail: user.email
@@ -1030,7 +1030,7 @@ const updateUser = async (req, res) => {
         const user = result.rows[0];
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user?.userId, types_1.AuditAction.UPDATE, 'USER', id, JSON.stringify({ updates })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user?.userId, types_1.AuditAction.UPDATE, 'USER', id, JSON.stringify({ updates })]);
         (0, responseHandler_1.successResponse)(res, user, 'User updated successfully');
     }
     catch (error) {
@@ -1086,7 +1086,7 @@ const deleteUser = async (req, res) => {
         await (0, database_1.query)('UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND revoked_at IS NULL', [id]);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user?.userId, types_1.AuditAction.DELETE, 'USER', id, JSON.stringify({ action: 'SOFT_DELETE' })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user?.userId, types_1.AuditAction.DELETE, 'USER', id, JSON.stringify({ action: 'SOFT_DELETE' })]);
         (0, responseHandler_1.successResponse)(res, null, 'User deleted successfully');
     }
     catch (error) {

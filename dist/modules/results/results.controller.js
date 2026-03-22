@@ -34,7 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getResultByFixtureId = exports.getResults = exports.publishResult = exports.confirmResult = exports.submitResult = void 0;
-const { v4: uuidv4 } = require("uuid");
+const uuid_1 = require("uuid");
 const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
 const types_1 = require("../../types");
@@ -101,7 +101,7 @@ const submitResult = async (req, res) => {
         }
         else {
             // Create new result
-            const resultId = uuidv4();
+            const resultId = (0, uuid_1.v4)();
             result = await client.query(`INSERT INTO results (id, fixture_id, home_score, away_score, status, submitted_by)
          VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING *`, [resultId, fixture_id, home_score, away_score, types_1.ResultStatus.SUBMITTED, req.user.userId]);
@@ -134,7 +134,7 @@ const submitResult = async (req, res) => {
         }
         // Log audit
         await client.query(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_2.AuditAction.CREATE, 'RESULT', result.rows[0].id, JSON.stringify({ fixture_id, home_score, away_score })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.CREATE, 'RESULT', result.rows[0].id, JSON.stringify({ fixture_id, home_score, away_score })]);
         await client.query('COMMIT');
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'Result submitted successfully', 201);
     }
@@ -194,7 +194,7 @@ const confirmResult = async (req, res) => {
        RETURNING *`, [types_1.ResultStatus.CONFIRMED, req.user.userId, id]);
         // Log audit
         await client.query(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_2.AuditAction.UPDATE, 'RESULT', id, JSON.stringify({ status: 'CONFIRMED' })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.UPDATE, 'RESULT', id, JSON.stringify({ status: 'CONFIRMED' })]);
         await client.query('COMMIT');
         (0, responseHandler_1.successResponse)(res, updatedResult.rows[0], 'Result confirmed successfully');
     }
@@ -263,7 +263,7 @@ const publishResult = async (req, res) => {
         await client.query(`UPDATE fixtures SET status = $1 WHERE id = $2`, ['FINISHED', result.fixture_id]);
         // Log audit
         await client.query(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_2.AuditAction.PUBLISH, 'RESULT', id, JSON.stringify({ status: 'PUBLISHED', fixture_id: result.fixture_id })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.PUBLISH, 'RESULT', id, JSON.stringify({ status: 'PUBLISHED', fixture_id: result.fixture_id })]);
         await client.query('COMMIT');
         (0, responseHandler_1.successResponse)(res, null, 'Result published and standings updated successfully');
     }
@@ -317,7 +317,7 @@ const updateTeamStandings = async (client, teamId, competitionId, result, points
     else {
         // Create new standing
         await client.query(`INSERT INTO standings (id, competition_id, team_id, played, won, drawn, lost, goals_for, goals_against, goal_difference, points)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`, [uuidv4(), competitionId, teamId, 1, won, drawn, lost, teamScore, opponentScore, teamScore - opponentScore, points]);
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`, [(0, uuid_1.v4)(), competitionId, teamId, 1, won, drawn, lost, teamScore, opponentScore, teamScore - opponentScore, points]);
     }
 };
 /**

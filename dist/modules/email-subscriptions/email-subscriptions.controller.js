@@ -34,7 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getAllSubscribers = exports.getAssociationSubscribers = exports.getSubscriptionStatus = exports.unsubscribe = exports.subscribe = void 0;
-const { v4: uuidv4 } = require("uuid");
+const uuid_1 = require("uuid");
 const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
 const types_1 = require("../../types");
@@ -135,8 +135,8 @@ const subscribe = async (req, res) => {
         }
         else {
             // Create new subscription
-            const subscriptionId = uuidv4();
-            const unsubscribeToken = uuidv4();
+            const subscriptionId = (0, uuid_1.v4)();
+            const unsubscribeToken = (0, uuid_1.v4)();
             await client.query(`INSERT INTO email_subscriptions (id, email, association_id, unsubscribe_token, preferences, ip_address)
          VALUES ($1, $2, $3, $4, $5, $6)`, [
                 subscriptionId,
@@ -150,7 +150,7 @@ const subscribe = async (req, res) => {
             if (req.user) {
                 await client.query(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
            VALUES ($1, $2, $3, $4, $5, $6)`, [
-                    uuidv4(),
+                    (0, uuid_1.v4)(),
                     req.user.userId,
                     types_2.AuditAction.CREATE,
                     'EMAIL_SUBSCRIPTION',

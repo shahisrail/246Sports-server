@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import bcrypt from 'bcrypt';
-const { v4: uuidv4 } = require("uuid");
+import { v4 as uuidv4 } from 'uuid';
 import { query } from '../../config/database';
 import { generateToken } from '../../utils/jwt';
 import { successResponse, errorResponse } from '../../utils/responseHandler';

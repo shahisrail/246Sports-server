@@ -1,5 +1,5 @@
 import { Response } from 'express';
-const { v4: uuidv4 } = require("uuid");
+import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcrypt';
 import { query } from '../../config/database';
 import { successResponse, errorResponse } from '../../utils/responseHandler';

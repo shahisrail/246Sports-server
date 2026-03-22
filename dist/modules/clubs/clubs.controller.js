@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteClub = exports.updateClub = exports.createClub = exports.getClubById = exports.testEndpoint = exports.getPublicClubs = exports.getClubs = void 0;
-const { v4: uuidv4 } = require("uuid");
+const uuid_1 = require("uuid");
 const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
 const types_1 = require("../../types");
@@ -533,7 +533,7 @@ const createClub = async (req, res) => {
             (0, responseHandler_1.errorResponse)(res, 'You do not have permission to create clubs', 403, 'INSUFFICIENT_PERMISSIONS');
             return;
         }
-        const clubId = uuidv4();
+        const clubId = (0, uuid_1.v4)();
         const insertValues = [
             clubId,
             name,
@@ -552,7 +552,7 @@ const createClub = async (req, res) => {
        RETURNING *`, insertValues);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_2.AuditAction.CREATE, 'CLUB', clubId, JSON.stringify({ name, associationId: effectiveAssociationId })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.CREATE, 'CLUB', clubId, JSON.stringify({ name, associationId: effectiveAssociationId })]);
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'Club created successfully', 201);
     }
     catch (error) {
@@ -690,7 +690,7 @@ const updateClub = async (req, res) => {
         const result = await (0, database_1.query)(`UPDATE clubs SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`, values);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_2.AuditAction.UPDATE, 'CLUB', id, JSON.stringify(req.body)]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.UPDATE, 'CLUB', id, JSON.stringify(req.body)]);
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'Club updated successfully');
     }
     catch (error) {
@@ -744,7 +744,7 @@ const deleteClub = async (req, res) => {
         await (0, database_1.query)('UPDATE clubs SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_2.AuditAction.DELETE, 'CLUB', id, JSON.stringify({ name: existing.rows[0].name })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.DELETE, 'CLUB', id, JSON.stringify({ name: existing.rows[0].name })]);
         (0, responseHandler_1.successResponse)(res, null, 'Club deleted successfully');
     }
     catch (error) {

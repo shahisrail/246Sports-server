@@ -34,7 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateFixtures = exports.deleteCompetition = exports.updateCompetition = exports.createCompetition = exports.getCompetitionById = exports.getCompetitions = void 0;
-const { v4: uuidv4 } = require("uuid");
+const uuid_1 = require("uuid");
 const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
 const types_1 = require("../../types");
@@ -302,7 +302,7 @@ const createCompetition = async (req, res) => {
             (0, responseHandler_1.errorResponse)(res, 'You do not have permission to create competitions', 403, 'INSUFFICIENT_PERMISSIONS');
             return;
         }
-        const competitionId = uuidv4();
+        const competitionId = (0, uuid_1.v4)();
         console.log('CREATE COMPETITION - Debug:', {
             name,
             type,
@@ -343,7 +343,7 @@ const createCompetition = async (req, res) => {
         ]);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_2.AuditAction.CREATE, 'COMPETITION', competitionId, JSON.stringify({ name, sport })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.CREATE, 'COMPETITION', competitionId, JSON.stringify({ name, sport })]);
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'Competition created successfully', 201);
     }
     catch (error) {
@@ -479,7 +479,7 @@ const updateCompetition = async (req, res) => {
         const result = await (0, database_1.query)(`UPDATE competitions SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`, values);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_2.AuditAction.UPDATE, 'COMPETITION', id, JSON.stringify(req.body)]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.UPDATE, 'COMPETITION', id, JSON.stringify(req.body)]);
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'Competition updated successfully');
     }
     catch (error) {
@@ -533,7 +533,7 @@ const deleteCompetition = async (req, res) => {
         await (0, database_1.query)('UPDATE competitions SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
         // Log audit
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_2.AuditAction.DELETE, 'COMPETITION', id, JSON.stringify({ name: existing.rows[0].name })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.DELETE, 'COMPETITION', id, JSON.stringify({ name: existing.rows[0].name })]);
         (0, responseHandler_1.successResponse)(res, null, 'Competition deleted successfully');
     }
     catch (error) {
@@ -693,7 +693,7 @@ const generateFixtures = async (req, res) => {
                 const awayTeam = effectiveTeams[awayIdx];
                 if (!homeTeam || !awayTeam)
                     continue; // Skip dummy teams
-                const fixtureId = uuidv4();
+                const fixtureId = (0, uuid_1.v4)();
                 const fixtureDate = new Date(startDateObj);
                 fixtureDate.setDate(fixtureDate.getDate() + (matchdayCounter - 1) * matchdays);
                 const fixtureDateTime = new Date(fixtureDate);
@@ -712,7 +712,7 @@ const generateFixtures = async (req, res) => {
         }
         // Log audit
         await client.query(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [uuidv4(), req.user.userId, types_2.AuditAction.CREATE, 'FIXTURES', id, JSON.stringify({
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.CREATE, 'FIXTURES', id, JSON.stringify({
                 count: fixtures.length,
                 format,
                 teams: teamIds.length
