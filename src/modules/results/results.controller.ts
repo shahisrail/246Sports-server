@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { query } from '../../config/database';
+import { pool, query } from '../../config/database';
 import { successResponse, errorResponse } from '../../utils/responseHandler';
 import { AuthRequest, ResultStatus } from '../../types';
 import { AuditAction } from '../../types';
@@ -36,7 +36,8 @@ import { AuditAction } from '../../types';
  *         description: Result submitted successfully
  */
 export const submitResult = async (req: AuthRequest, res: Response): Promise<void> => {
-  const client = await (await import('../../config/database')).pool.connect();
+  const client = await pool.connect();
+  let transactionStarted = false;
 
   try {
     if (!req.user) {
@@ -45,8 +46,6 @@ export const submitResult = async (req: AuthRequest, res: Response): Promise<voi
     }
 
     const { fixture_id, home_score, away_score, goals, stats } = req.body;
-
-    await client.query('BEGIN');
 
     // Check if fixture exists and get competition info
     const fixtureResult = await client.query(
@@ -58,12 +57,12 @@ export const submitResult = async (req: AuthRequest, res: Response): Promise<voi
     );
 
     if (fixtureResult.rows.length === 0) {
-      await client.query('ROLLBACK');
       errorResponse(res, 'Fixture not found', 404, 'FIXTURE_NOT_FOUND');
       return;
     }
 
-    // const fixture = fixtureResult.rows[0];
+    await client.query('BEGIN');
+    transactionStarted = true;
 
     // Check if result already exists
     const existingResult = await client.query(
@@ -143,11 +142,18 @@ export const submitResult = async (req: AuthRequest, res: Response): Promise<voi
     );
 
     await client.query('COMMIT');
+    transactionStarted = false;
 
     successResponse(res, result.rows[0], 'Result submitted successfully', 201);
   } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Submit result error:', error);
+    if (transactionStarted) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Rollback error:', rollbackError);
+      }
+    }
+    console.error('Submit result error details:', error);
     errorResponse(res, 'Failed to submit result', 500, 'SUBMIT_RESULT_FAILED');
   } finally {
     client.release();
@@ -174,7 +180,8 @@ export const submitResult = async (req: AuthRequest, res: Response): Promise<voi
  *         description: Result confirmed successfully
  */
 export const confirmResult = async (req: AuthRequest, res: Response): Promise<void> => {
-  const client = await (await import('../../config/database')).pool.connect();
+  const client = await pool.connect();
+  let transactionStarted = false;
 
   try {
     if (!req.user) {
@@ -184,15 +191,12 @@ export const confirmResult = async (req: AuthRequest, res: Response): Promise<vo
 
     const { id } = req.params;
 
-    await client.query('BEGIN');
-
     const existing = await client.query(
       'SELECT * FROM results WHERE id = $1',
       [id]
     );
 
     if (existing.rows.length === 0) {
-      await client.query('ROLLBACK');
       errorResponse(res, 'Result not found', 404, 'RESULT_NOT_FOUND');
       return;
     }
@@ -200,10 +204,12 @@ export const confirmResult = async (req: AuthRequest, res: Response): Promise<vo
     const result = existing.rows[0];
 
     if (result.status !== ResultStatus.SUBMITTED) {
-      await client.query('ROLLBACK');
       errorResponse(res, 'Result can only be confirmed from SUBMITTED status', 400, 'INVALID_STATUS');
       return;
     }
+
+    await client.query('BEGIN');
+    transactionStarted = true;
 
     const updatedResult = await client.query(
       `UPDATE results
@@ -221,11 +227,18 @@ export const confirmResult = async (req: AuthRequest, res: Response): Promise<vo
     );
 
     await client.query('COMMIT');
+    transactionStarted = false;
 
     successResponse(res, updatedResult.rows[0], 'Result confirmed successfully');
   } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Confirm result error:', error);
+    if (transactionStarted) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Rollback error:', rollbackError);
+      }
+    }
+    console.error('Confirm result error details:', error);
     errorResponse(res, 'Failed to confirm result', 500, 'CONFIRM_RESULT_FAILED');
   } finally {
     client.release();
@@ -252,7 +265,8 @@ export const confirmResult = async (req: AuthRequest, res: Response): Promise<vo
  *         description: Result published and standings updated successfully
  */
 export const publishResult = async (req: AuthRequest, res: Response): Promise<void> => {
-  const client = await (await import('../../config/database')).pool.connect();
+  const client = await pool.connect();
+  let transactionStarted = false;
 
   try {
     if (!req.user) {
@@ -261,8 +275,6 @@ export const publishResult = async (req: AuthRequest, res: Response): Promise<vo
     }
 
     const { id } = req.params;
-
-    await client.query('BEGIN');
 
     const existing = await client.query(
       `SELECT r.*, f.competition_id, f.home_team_id, f.away_team_id, c.points_win, c.points_draw, c.points_loss
@@ -274,7 +286,6 @@ export const publishResult = async (req: AuthRequest, res: Response): Promise<vo
     );
 
     if (existing.rows.length === 0) {
-      await client.query('ROLLBACK');
       errorResponse(res, 'Result not found', 404, 'RESULT_NOT_FOUND');
       return;
     }
@@ -282,10 +293,12 @@ export const publishResult = async (req: AuthRequest, res: Response): Promise<vo
     const result = existing.rows[0];
 
     if (result.status !== ResultStatus.CONFIRMED) {
-      await client.query('ROLLBACK');
       errorResponse(res, 'Result can only be published from CONFIRMED status', 400, 'INVALID_STATUS');
       return;
     }
+
+    await client.query('BEGIN');
+    transactionStarted = true;
 
     // Update result status
     await client.query(
@@ -313,11 +326,18 @@ export const publishResult = async (req: AuthRequest, res: Response): Promise<vo
     );
 
     await client.query('COMMIT');
+    transactionStarted = false;
 
     successResponse(res, null, 'Result published and standings updated successfully');
   } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Publish result error:', error);
+    if (transactionStarted) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Rollback error:', rollbackError);
+      }
+    }
+    console.error('Publish result error details:', error);
     errorResponse(res, 'Failed to publish result', 500, 'PUBLISH_RESULT_FAILED');
   } finally {
     client.release();

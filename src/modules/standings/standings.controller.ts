@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { query } from '../../config/database';
+import { pool, query } from '../../config/database';
 import { successResponse, errorResponse } from '../../utils/responseHandler';
 import { AuthRequest } from '../../types';
 
@@ -84,7 +84,8 @@ export const recalculateStandings = async (
   req: AuthRequest,
   res: Response
 ): Promise<void> => {
-  const client = await (await import('../../config/database')).pool.connect();
+  const client = await pool.connect();
+  let transactionStarted = false;
 
   try {
     if (!req.user) {
@@ -94,8 +95,6 @@ export const recalculateStandings = async (
 
     const { competitionId } = req.params;
 
-    await client.query('BEGIN');
-
     // Get competition info
     const competitionResult = await client.query(
       'SELECT points_win, points_draw, points_loss FROM competitions WHERE id = $1',
@@ -103,12 +102,14 @@ export const recalculateStandings = async (
     );
 
     if (competitionResult.rows.length === 0) {
-      await client.query('ROLLBACK');
       errorResponse(res, 'Competition not found', 404, 'COMPETITION_NOT_FOUND');
       return;
     }
 
     const competition = competitionResult.rows[0];
+
+    await client.query('BEGIN');
+    transactionStarted = true;
 
     // Get all published results for this competition
     const resultsResult = await client.query(
@@ -166,6 +167,7 @@ export const recalculateStandings = async (
     }
 
     await client.query('COMMIT');
+    transactionStarted = false;
 
     // Get updated standings
     const standingsResult = await query(
@@ -197,8 +199,14 @@ export const recalculateStandings = async (
       'Standings recalculated successfully'
     );
   } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Recalculate standings error:', error);
+    if (transactionStarted) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Rollback error:', rollbackError);
+      }
+    }
+    console.error('Recalculate standings error details:', error);
     errorResponse(res, 'Failed to recalculate standings', 500, 'RECALCULATE_STANDINGS_FAILED');
   } finally {
     client.release();

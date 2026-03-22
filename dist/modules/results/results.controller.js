@@ -1,37 +1,4 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getResultByFixtureId = exports.getResults = exports.publishResult = exports.confirmResult = exports.submitResult = void 0;
 const uuid_1 = require("uuid");
@@ -70,25 +37,25 @@ const types_2 = require("../../types");
  *         description: Result submitted successfully
  */
 const submitResult = async (req, res) => {
-    const client = await (await Promise.resolve().then(() => __importStar(require('../../config/database')))).pool.connect();
+    const client = await database_1.pool.connect();
+    let transactionStarted = false;
     try {
         if (!req.user) {
             (0, responseHandler_1.errorResponse)(res, 'Unauthorized', 401, 'UNAUTHORIZED');
             return;
         }
         const { fixture_id, home_score, away_score, goals, stats } = req.body;
-        await client.query('BEGIN');
         // Check if fixture exists and get competition info
         const fixtureResult = await client.query(`SELECT f.*, c.id as competition_id, c.points_win, c.points_draw, c.points_loss
        FROM fixtures f
        LEFT JOIN competitions c ON f.competition_id = c.id
        WHERE f.id = $1 AND f.deleted_at IS NULL`, [fixture_id]);
         if (fixtureResult.rows.length === 0) {
-            await client.query('ROLLBACK');
             (0, responseHandler_1.errorResponse)(res, 'Fixture not found', 404, 'FIXTURE_NOT_FOUND');
             return;
         }
-        // const fixture = fixtureResult.rows[0];
+        await client.query('BEGIN');
+        transactionStarted = true;
         // Check if result already exists
         const existingResult = await client.query('SELECT id, status FROM results WHERE fixture_id = $1', [fixture_id]);
         let result;
@@ -136,11 +103,19 @@ const submitResult = async (req, res) => {
         await client.query(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
        VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.CREATE, 'RESULT', result.rows[0].id, JSON.stringify({ fixture_id, home_score, away_score })]);
         await client.query('COMMIT');
+        transactionStarted = false;
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'Result submitted successfully', 201);
     }
     catch (error) {
-        await client.query('ROLLBACK');
-        console.error('Submit result error:', error);
+        if (transactionStarted) {
+            try {
+                await client.query('ROLLBACK');
+            }
+            catch (rollbackError) {
+                console.error('Rollback error:', rollbackError);
+            }
+        }
+        console.error('Submit result error details:', error);
         (0, responseHandler_1.errorResponse)(res, 'Failed to submit result', 500, 'SUBMIT_RESULT_FAILED');
     }
     finally {
@@ -168,26 +143,26 @@ exports.submitResult = submitResult;
  *         description: Result confirmed successfully
  */
 const confirmResult = async (req, res) => {
-    const client = await (await Promise.resolve().then(() => __importStar(require('../../config/database')))).pool.connect();
+    const client = await database_1.pool.connect();
+    let transactionStarted = false;
     try {
         if (!req.user) {
             (0, responseHandler_1.errorResponse)(res, 'Unauthorized', 401, 'UNAUTHORIZED');
             return;
         }
         const { id } = req.params;
-        await client.query('BEGIN');
         const existing = await client.query('SELECT * FROM results WHERE id = $1', [id]);
         if (existing.rows.length === 0) {
-            await client.query('ROLLBACK');
             (0, responseHandler_1.errorResponse)(res, 'Result not found', 404, 'RESULT_NOT_FOUND');
             return;
         }
         const result = existing.rows[0];
         if (result.status !== types_1.ResultStatus.SUBMITTED) {
-            await client.query('ROLLBACK');
             (0, responseHandler_1.errorResponse)(res, 'Result can only be confirmed from SUBMITTED status', 400, 'INVALID_STATUS');
             return;
         }
+        await client.query('BEGIN');
+        transactionStarted = true;
         const updatedResult = await client.query(`UPDATE results
        SET status = $1, confirmed_by = $2, updated_at = CURRENT_TIMESTAMP
        WHERE id = $3
@@ -196,11 +171,19 @@ const confirmResult = async (req, res) => {
         await client.query(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
        VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.UPDATE, 'RESULT', id, JSON.stringify({ status: 'CONFIRMED' })]);
         await client.query('COMMIT');
+        transactionStarted = false;
         (0, responseHandler_1.successResponse)(res, updatedResult.rows[0], 'Result confirmed successfully');
     }
     catch (error) {
-        await client.query('ROLLBACK');
-        console.error('Confirm result error:', error);
+        if (transactionStarted) {
+            try {
+                await client.query('ROLLBACK');
+            }
+            catch (rollbackError) {
+                console.error('Rollback error:', rollbackError);
+            }
+        }
+        console.error('Confirm result error details:', error);
         (0, responseHandler_1.errorResponse)(res, 'Failed to confirm result', 500, 'CONFIRM_RESULT_FAILED');
     }
     finally {
@@ -228,30 +211,30 @@ exports.confirmResult = confirmResult;
  *         description: Result published and standings updated successfully
  */
 const publishResult = async (req, res) => {
-    const client = await (await Promise.resolve().then(() => __importStar(require('../../config/database')))).pool.connect();
+    const client = await database_1.pool.connect();
+    let transactionStarted = false;
     try {
         if (!req.user) {
             (0, responseHandler_1.errorResponse)(res, 'Unauthorized', 401, 'UNAUTHORIZED');
             return;
         }
         const { id } = req.params;
-        await client.query('BEGIN');
         const existing = await client.query(`SELECT r.*, f.competition_id, f.home_team_id, f.away_team_id, c.points_win, c.points_draw, c.points_loss
        FROM results r
        LEFT JOIN fixtures f ON r.fixture_id = f.id
        LEFT JOIN competitions c ON f.competition_id = c.id
        WHERE r.id = $1`, [id]);
         if (existing.rows.length === 0) {
-            await client.query('ROLLBACK');
             (0, responseHandler_1.errorResponse)(res, 'Result not found', 404, 'RESULT_NOT_FOUND');
             return;
         }
         const result = existing.rows[0];
         if (result.status !== types_1.ResultStatus.CONFIRMED) {
-            await client.query('ROLLBACK');
             (0, responseHandler_1.errorResponse)(res, 'Result can only be published from CONFIRMED status', 400, 'INVALID_STATUS');
             return;
         }
+        await client.query('BEGIN');
+        transactionStarted = true;
         // Update result status
         await client.query(`UPDATE results
        SET status = $1, published_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
@@ -265,11 +248,19 @@ const publishResult = async (req, res) => {
         await client.query(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
        VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.PUBLISH, 'RESULT', id, JSON.stringify({ status: 'PUBLISHED', fixture_id: result.fixture_id })]);
         await client.query('COMMIT');
+        transactionStarted = false;
         (0, responseHandler_1.successResponse)(res, null, 'Result published and standings updated successfully');
     }
     catch (error) {
-        await client.query('ROLLBACK');
-        console.error('Publish result error:', error);
+        if (transactionStarted) {
+            try {
+                await client.query('ROLLBACK');
+            }
+            catch (rollbackError) {
+                console.error('Rollback error:', rollbackError);
+            }
+        }
+        console.error('Publish result error details:', error);
         (0, responseHandler_1.errorResponse)(res, 'Failed to publish result', 500, 'PUBLISH_RESULT_FAILED');
     }
     finally {

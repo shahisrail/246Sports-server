@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { query } from '../../config/database';
+import { pool, query } from '../../config/database';
 import { successResponse, errorResponse } from '../../utils/responseHandler';
 import { AuthRequest, UserRole } from '../../types';
 import { AuditAction } from '../../types';
@@ -53,7 +53,8 @@ export const subscribe = async (
   req: AuthRequest,
   res: Response
 ): Promise<void> => {
-  const client = await (await import('../../config/database')).pool.connect();
+  const client = await pool.connect();
+  let transactionStarted = false;
 
   try {
     const { email, association_id, preferences } = req.body;
@@ -81,7 +82,7 @@ export const subscribe = async (
     // Validate association_id is UUID
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(association_id)) {
-      errorResponse(res, 'Invalid association_id format', 400, 'INVALID_ASSOCOCIATION_ID');
+      errorResponse(res, 'Invalid association_id format', 400, 'INVALID_ASSOCIATION_ID');
       return;
     }
 
@@ -92,12 +93,12 @@ export const subscribe = async (
     );
 
     if (associationCheck.rows.length === 0) {
-      await client.query('ROLLBACK');
       errorResponse(res, 'Association not found', 404, 'ASSOCIATION_NOT_FOUND');
       return;
     }
 
     await client.query('BEGIN');
+    transactionStarted = true;
 
     // Check if already subscribed
     const existing = await client.query(
@@ -111,6 +112,7 @@ export const subscribe = async (
 
       if (subscription.status === 'ACTIVE') {
         await client.query('ROLLBACK');
+        transactionStarted = false;
         errorResponse(res, 'Already subscribed to this association', 409, 'ALREADY_SUBSCRIBED');
         return;
       }
@@ -158,6 +160,7 @@ export const subscribe = async (
     }
 
     await client.query('COMMIT');
+    transactionStarted = false;
 
     successResponse(
       res,
@@ -169,8 +172,14 @@ export const subscribe = async (
       201
     );
   } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Subscribe error:', error);
+    if (transactionStarted) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Rollback error:', rollbackError);
+      }
+    }
+    console.error('Subscribe error details:', error);
     errorResponse(res, 'Failed to subscribe', 500, 'SUBSCRIBE_FAILED');
   } finally {
     client.release();

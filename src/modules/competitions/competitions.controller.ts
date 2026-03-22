@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { query } from '../../config/database';
+import { pool, query } from '../../config/database';
 import { successResponse, errorResponse, paginatedResponse } from '../../utils/responseHandler';
 import { AuthRequest, CompetitionStatus, CompetitionCategory, UserRole } from '../../types';
 import { AuditAction } from '../../types';
@@ -710,7 +710,8 @@ export const deleteCompetition = async (req: AuthRequest, res: Response): Promis
  *         description: Fixtures generated successfully
  */
 export const generateFixtures = async (req: AuthRequest, res: Response): Promise<void> => {
-  const client = await (await import('../../config/database')).pool.connect();
+  const client = await pool.connect();
+  let transactionStarted = false;
 
   try {
     if (!req.user) {
@@ -726,8 +727,6 @@ export const generateFixtures = async (req: AuthRequest, res: Response): Promise
       return;
     }
 
-    await client.query('BEGIN');
-
     // Check if competition exists and user has permission
     const competitionResult = await client.query(
       'SELECT * FROM competitions WHERE id = $1 AND deleted_at IS NULL',
@@ -735,7 +734,6 @@ export const generateFixtures = async (req: AuthRequest, res: Response): Promise
     );
 
     if (competitionResult.rows.length === 0) {
-      await client.query('ROLLBACK');
       errorResponse(res, 'Competition not found', 404, 'COMPETITION_NOT_FOUND');
       return;
     }
@@ -744,16 +742,17 @@ export const generateFixtures = async (req: AuthRequest, res: Response): Promise
 
     // TENANT ISOLATION: Check permissions
     if (req.user.role === UserRole.ASSOCIATION_ADMIN && competition.association_id !== req.user.associationId) {
-      await client.query('ROLLBACK');
       errorResponse(res, 'You can only generate fixtures for competitions in your association', 403, 'ASSOCIATION_MISMATCH');
       return;
     }
 
     if (req.user.role === UserRole.CLUB_ADMIN || req.user.role === UserRole.TEAM_MANAGER) {
-      await client.query('ROLLBACK');
       errorResponse(res, 'You do not have permission to generate fixtures', 403, 'INSUFFICIENT_PERMISSIONS');
       return;
     }
+
+    await client.query('BEGIN');
+    transactionStarted = true;
 
     // Check if teams exist
     const teamsResult = await client.query(
@@ -879,14 +878,17 @@ export const generateFixtures = async (req: AuthRequest, res: Response): Promise
     );
 
     await client.query('COMMIT');
+    transactionStarted = false;
 
-    successResponse(res, {
-      fixturesGenerated: fixtures.length,
-      fixtures,
-      matchdays: matchdayCounter - 1,
-    }, 'Fixtures generated successfully');
+    successResponse(res, { message: 'Fixtures generated successfully', count: fixtures.length }, 'Fixtures generated successfully');
   } catch (error) {
-    await client.query('ROLLBACK');
+    if (transactionStarted) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Rollback error:', rollbackError);
+      }
+    }
     console.error('Generate fixtures error:', error);
     errorResponse(res, 'Failed to generate fixtures', 500, 'GENERATE_FIXTURES_FAILED');
   } finally {

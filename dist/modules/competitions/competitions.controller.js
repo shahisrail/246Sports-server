@@ -1,37 +1,4 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateFixtures = exports.deleteCompetition = exports.updateCompetition = exports.createCompetition = exports.getCompetitionById = exports.getCompetitions = void 0;
 const uuid_1 = require("uuid");
@@ -621,7 +588,8 @@ exports.deleteCompetition = deleteCompetition;
  *         description: Fixtures generated successfully
  */
 const generateFixtures = async (req, res) => {
-    const client = await (await Promise.resolve().then(() => __importStar(require('../../config/database')))).pool.connect();
+    const client = await database_1.pool.connect();
+    let transactionStarted = false;
     try {
         if (!req.user) {
             (0, responseHandler_1.errorResponse)(res, 'Unauthorized', 401, 'UNAUTHORIZED');
@@ -633,26 +601,24 @@ const generateFixtures = async (req, res) => {
             (0, responseHandler_1.errorResponse)(res, 'At least 2 teams are required', 400, 'INSUFFICIENT_TEAMS');
             return;
         }
-        await client.query('BEGIN');
         // Check if competition exists and user has permission
         const competitionResult = await client.query('SELECT * FROM competitions WHERE id = $1 AND deleted_at IS NULL', [id]);
         if (competitionResult.rows.length === 0) {
-            await client.query('ROLLBACK');
             (0, responseHandler_1.errorResponse)(res, 'Competition not found', 404, 'COMPETITION_NOT_FOUND');
             return;
         }
         const competition = competitionResult.rows[0];
         // TENANT ISOLATION: Check permissions
         if (req.user.role === types_1.UserRole.ASSOCIATION_ADMIN && competition.association_id !== req.user.associationId) {
-            await client.query('ROLLBACK');
             (0, responseHandler_1.errorResponse)(res, 'You can only generate fixtures for competitions in your association', 403, 'ASSOCIATION_MISMATCH');
             return;
         }
         if (req.user.role === types_1.UserRole.CLUB_ADMIN || req.user.role === types_1.UserRole.TEAM_MANAGER) {
-            await client.query('ROLLBACK');
             (0, responseHandler_1.errorResponse)(res, 'You do not have permission to generate fixtures', 403, 'INSUFFICIENT_PERMISSIONS');
             return;
         }
+        await client.query('BEGIN');
+        transactionStarted = true;
         // Check if teams exist
         const teamsResult = await client.query(`SELECT id, name FROM teams WHERE id = ANY($1) AND deleted_at IS NULL`, [teamIds]);
         if (teamsResult.rows.length !== teamIds.length) {
@@ -749,14 +715,18 @@ const generateFixtures = async (req, res) => {
                 teams: teamIds.length
             })]);
         await client.query('COMMIT');
-        (0, responseHandler_1.successResponse)(res, {
-            fixturesGenerated: fixtures.length,
-            fixtures,
-            matchdays: matchdayCounter - 1,
-        }, 'Fixtures generated successfully');
+        transactionStarted = false;
+        (0, responseHandler_1.successResponse)(res, { message: 'Fixtures generated successfully', count: fixtures.length }, 'Fixtures generated successfully');
     }
     catch (error) {
-        await client.query('ROLLBACK');
+        if (transactionStarted) {
+            try {
+                await client.query('ROLLBACK');
+            }
+            catch (rollbackError) {
+                console.error('Rollback error:', rollbackError);
+            }
+        }
         console.error('Generate fixtures error:', error);
         (0, responseHandler_1.errorResponse)(res, 'Failed to generate fixtures', 500, 'GENERATE_FIXTURES_FAILED');
     }

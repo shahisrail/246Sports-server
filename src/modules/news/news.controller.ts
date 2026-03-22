@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import slugify from 'slugify';
-import { query } from '../../config/database';
+import { pool, query } from '../../config/database';
 import { successResponse, errorResponse, paginatedResponse } from '../../utils/responseHandler';
 import { AuthRequest, UserRole } from '../../types';
 import { logger, auditLogger } from '../../utils/logger';
@@ -247,7 +247,8 @@ export const getNewsBySlug = async (req: AuthRequest, res: Response): Promise<vo
  *         description: News article created successfully
  */
 export const createNews = async (req: AuthRequest, res: Response): Promise<void> => {
-  const client = await (await import('../../config/database')).pool.connect();
+  const client = await pool.connect();
+  let transactionStarted = false;
 
   try {
     if (!req.user) {
@@ -270,14 +271,12 @@ export const createNews = async (req: AuthRequest, res: Response): Promise<void>
     // TENANT ISOLATION: Validate association access
     if (association_id) {
       if (req.user.role === UserRole.ASSOCIATION_ADMIN && association_id !== req.user.associationId) {
-        await client.query('ROLLBACK');
         errorResponse(res, 'You can only create news for your own association', 403, 'ASSOCIATION_MISMATCH');
         return;
       }
 
       // Club admins and team managers cannot create news with specific association
       if (req.user.role === UserRole.CLUB_ADMIN || req.user.role === UserRole.TEAM_MANAGER) {
-        await client.query('ROLLBACK');
         errorResponse(res, 'You do not have permission to create news', 403, 'INSUFFICIENT_PERMISSIONS');
         return;
       }
@@ -290,6 +289,7 @@ export const createNews = async (req: AuthRequest, res: Response): Promise<void>
     }
 
     await client.query('BEGIN');
+    transactionStarted = true;
 
     // Generate unique slug
     let slug = slugify(title, { lower: true, strict: true });
@@ -339,13 +339,20 @@ export const createNews = async (req: AuthRequest, res: Response): Promise<void>
     });
 
     await client.query('COMMIT');
+    transactionStarted = false;
 
     logger.info('News article created', { newsId, title: result.rows[0].title, userId: req.user.userId });
 
     successResponse(res, result.rows[0], 'News article created successfully', 201);
   } catch (error) {
-    await client.query('ROLLBACK');
-    logger.error('Create news error', { error });
+    if (transactionStarted) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Rollback error:', rollbackError);
+      }
+    }
+    logger.error('Create news error details', { error });
     errorResponse(res, 'Failed to create news article', 500, 'CREATE_NEWS_FAILED');
   } finally {
     client.release();
@@ -397,7 +404,8 @@ export const createNews = async (req: AuthRequest, res: Response): Promise<void>
  *         description: News article updated successfully
  */
 export const updateNews = async (req: AuthRequest, res: Response): Promise<void> => {
-  const client = await (await import('../../config/database')).pool.connect();
+  const client = await pool.connect();
+  let transactionStarted = false;
 
   try {
     if (!req.user) {
@@ -408,15 +416,12 @@ export const updateNews = async (req: AuthRequest, res: Response): Promise<void>
     const { id } = req.params;
     const { title, content, excerpt, featured_image, sport, category, region, status } = req.body;
 
-    await client.query('BEGIN');
-
     const existing = await client.query(
       'SELECT * FROM news WHERE id = $1 AND deleted_at IS NULL',
       [id]
     );
 
     if (existing.rows.length === 0) {
-      await client.query('ROLLBACK');
       errorResponse(res, 'News article not found', 404, 'NEWS_NOT_FOUND');
       return;
     }
@@ -424,17 +429,18 @@ export const updateNews = async (req: AuthRequest, res: Response): Promise<void>
     // TENANT ISOLATION: Check if user can modify this news
     const article = existing.rows[0];
     if (req.user.role === UserRole.ASSOCIATION_ADMIN && article.association_id !== req.user.associationId) {
-      await client.query('ROLLBACK');
       errorResponse(res, 'You can only update news in your association', 403, 'ASSOCIATION_MISMATCH');
       return;
     }
 
     // Club admins and team managers cannot update news
     if (req.user.role === UserRole.CLUB_ADMIN || req.user.role === UserRole.TEAM_MANAGER) {
-      await client.query('ROLLBACK');
       errorResponse(res, 'You do not have permission to update news', 403, 'INSUFFICIENT_PERMISSIONS');
       return;
     }
+
+    await client.query('BEGIN');
+    transactionStarted = true;
 
     // Build update query
     const updates: string[] = [];
@@ -482,11 +488,11 @@ export const updateNews = async (req: AuthRequest, res: Response): Promise<void>
 
     updates.push(`updated_by = $${paramCount++}`);
     values.push(req.user.userId);
-    updates.push(`updated_at = CURRENT_TIMESTAMP`);
+    updates.push(`id = $${paramCount}`); // For WHERE clause
     values.push(id);
 
     const result = await client.query(
-      `UPDATE news SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`,
+      `UPDATE news SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${paramCount} RETURNING *`,
       values
     );
 
@@ -496,13 +502,20 @@ export const updateNews = async (req: AuthRequest, res: Response): Promise<void>
     });
 
     await client.query('COMMIT');
+    transactionStarted = false;
 
     logger.info('News article updated', { newsId: id, userId: req.user.userId });
 
     successResponse(res, result.rows[0], 'News article updated successfully');
   } catch (error) {
-    await client.query('ROLLBACK');
-    logger.error('Update news error', { error });
+    if (transactionStarted) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Rollback error:', rollbackError);
+      }
+    }
+    logger.error('Update news error details', { error });
     errorResponse(res, 'Failed to update news article', 500, 'UPDATE_NEWS_FAILED');
   } finally {
     client.release();

@@ -1,37 +1,4 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -264,7 +231,8 @@ exports.getNewsBySlug = getNewsBySlug;
  *         description: News article created successfully
  */
 const createNews = async (req, res) => {
-    const client = await (await Promise.resolve().then(() => __importStar(require('../../config/database')))).pool.connect();
+    const client = await database_1.pool.connect();
+    let transactionStarted = false;
     try {
         if (!req.user) {
             (0, responseHandler_1.errorResponse)(res, 'Unauthorized', 401, 'UNAUTHORIZED');
@@ -274,13 +242,11 @@ const createNews = async (req, res) => {
         // TENANT ISOLATION: Validate association access
         if (association_id) {
             if (req.user.role === types_1.UserRole.ASSOCIATION_ADMIN && association_id !== req.user.associationId) {
-                await client.query('ROLLBACK');
                 (0, responseHandler_1.errorResponse)(res, 'You can only create news for your own association', 403, 'ASSOCIATION_MISMATCH');
                 return;
             }
             // Club admins and team managers cannot create news with specific association
             if (req.user.role === types_1.UserRole.CLUB_ADMIN || req.user.role === types_1.UserRole.TEAM_MANAGER) {
-                await client.query('ROLLBACK');
                 (0, responseHandler_1.errorResponse)(res, 'You do not have permission to create news', 403, 'INSUFFICIENT_PERMISSIONS');
                 return;
             }
@@ -293,6 +259,7 @@ const createNews = async (req, res) => {
             }
         }
         await client.query('BEGIN');
+        transactionStarted = true;
         // Generate unique slug
         let slug = (0, slugify_1.default)(title, { lower: true, strict: true });
         let slugSuffix = 1;
@@ -333,12 +300,20 @@ const createNews = async (req, res) => {
             status,
         });
         await client.query('COMMIT');
+        transactionStarted = false;
         logger_1.logger.info('News article created', { newsId, title: result.rows[0].title, userId: req.user.userId });
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'News article created successfully', 201);
     }
     catch (error) {
-        await client.query('ROLLBACK');
-        logger_1.logger.error('Create news error', { error });
+        if (transactionStarted) {
+            try {
+                await client.query('ROLLBACK');
+            }
+            catch (rollbackError) {
+                console.error('Rollback error:', rollbackError);
+            }
+        }
+        logger_1.logger.error('Create news error details', { error });
         (0, responseHandler_1.errorResponse)(res, 'Failed to create news article', 500, 'CREATE_NEWS_FAILED');
     }
     finally {
@@ -391,7 +366,8 @@ exports.createNews = createNews;
  *         description: News article updated successfully
  */
 const updateNews = async (req, res) => {
-    const client = await (await Promise.resolve().then(() => __importStar(require('../../config/database')))).pool.connect();
+    const client = await database_1.pool.connect();
+    let transactionStarted = false;
     try {
         if (!req.user) {
             (0, responseHandler_1.errorResponse)(res, 'Unauthorized', 401, 'UNAUTHORIZED');
@@ -399,26 +375,24 @@ const updateNews = async (req, res) => {
         }
         const { id } = req.params;
         const { title, content, excerpt, featured_image, sport, category, region, status } = req.body;
-        await client.query('BEGIN');
         const existing = await client.query('SELECT * FROM news WHERE id = $1 AND deleted_at IS NULL', [id]);
         if (existing.rows.length === 0) {
-            await client.query('ROLLBACK');
             (0, responseHandler_1.errorResponse)(res, 'News article not found', 404, 'NEWS_NOT_FOUND');
             return;
         }
         // TENANT ISOLATION: Check if user can modify this news
         const article = existing.rows[0];
         if (req.user.role === types_1.UserRole.ASSOCIATION_ADMIN && article.association_id !== req.user.associationId) {
-            await client.query('ROLLBACK');
             (0, responseHandler_1.errorResponse)(res, 'You can only update news in your association', 403, 'ASSOCIATION_MISMATCH');
             return;
         }
         // Club admins and team managers cannot update news
         if (req.user.role === types_1.UserRole.CLUB_ADMIN || req.user.role === types_1.UserRole.TEAM_MANAGER) {
-            await client.query('ROLLBACK');
             (0, responseHandler_1.errorResponse)(res, 'You do not have permission to update news', 403, 'INSUFFICIENT_PERMISSIONS');
             return;
         }
+        await client.query('BEGIN');
+        transactionStarted = true;
         // Build update query
         const updates = [];
         const values = [];
@@ -462,20 +436,28 @@ const updateNews = async (req, res) => {
         }
         updates.push(`updated_by = $${paramCount++}`);
         values.push(req.user.userId);
-        updates.push(`updated_at = CURRENT_TIMESTAMP`);
+        updates.push(`id = $${paramCount}`); // For WHERE clause
         values.push(id);
-        const result = await client.query(`UPDATE news SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`, values);
+        const result = await client.query(`UPDATE news SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${paramCount} RETURNING *`, values);
         (0, logger_1.auditLogger)('UPDATE_NEWS', 'NEWS', req.user.userId, {
             newsId: id,
             changes: req.body,
         });
         await client.query('COMMIT');
+        transactionStarted = false;
         logger_1.logger.info('News article updated', { newsId: id, userId: req.user.userId });
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'News article updated successfully');
     }
     catch (error) {
-        await client.query('ROLLBACK');
-        logger_1.logger.error('Update news error', { error });
+        if (transactionStarted) {
+            try {
+                await client.query('ROLLBACK');
+            }
+            catch (rollbackError) {
+                console.error('Rollback error:', rollbackError);
+            }
+        }
+        logger_1.logger.error('Update news error details', { error });
         (0, responseHandler_1.errorResponse)(res, 'Failed to update news article', 500, 'UPDATE_NEWS_FAILED');
     }
     finally {

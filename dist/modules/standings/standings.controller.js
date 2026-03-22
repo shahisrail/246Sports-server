@@ -1,37 +1,4 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.recalculateStandings = exports.getStandingsByCompetition = void 0;
 const database_1 = require("../../config/database");
@@ -107,22 +74,23 @@ exports.getStandingsByCompetition = getStandingsByCompetition;
  *         description: Standings recalculated successfully
  */
 const recalculateStandings = async (req, res) => {
-    const client = await (await Promise.resolve().then(() => __importStar(require('../../config/database')))).pool.connect();
+    const client = await database_1.pool.connect();
+    let transactionStarted = false;
     try {
         if (!req.user) {
             (0, responseHandler_1.errorResponse)(res, 'Unauthorized', 401, 'UNAUTHORIZED');
             return;
         }
         const { competitionId } = req.params;
-        await client.query('BEGIN');
         // Get competition info
         const competitionResult = await client.query('SELECT points_win, points_draw, points_loss FROM competitions WHERE id = $1', [competitionId]);
         if (competitionResult.rows.length === 0) {
-            await client.query('ROLLBACK');
             (0, responseHandler_1.errorResponse)(res, 'Competition not found', 404, 'COMPETITION_NOT_FOUND');
             return;
         }
         const competition = competitionResult.rows[0];
+        await client.query('BEGIN');
+        transactionStarted = true;
         // Get all published results for this competition
         const resultsResult = await client.query(`SELECT r.*, f.home_team_id, f.away_team_id
        FROM results r
@@ -145,6 +113,7 @@ const recalculateStandings = async (req, res) => {
             await updateTeamStandings(client, result.away_team_id, String(competitionId), result, competition.points_win, competition.points_draw, competition.points_loss);
         }
         await client.query('COMMIT');
+        transactionStarted = false;
         // Get updated standings
         const standingsResult = await (0, database_1.query)(`SELECT
         s.id,
@@ -168,8 +137,15 @@ const recalculateStandings = async (req, res) => {
         (0, responseHandler_1.successResponse)(res, standingsResult.rows, 'Standings recalculated successfully');
     }
     catch (error) {
-        await client.query('ROLLBACK');
-        console.error('Recalculate standings error:', error);
+        if (transactionStarted) {
+            try {
+                await client.query('ROLLBACK');
+            }
+            catch (rollbackError) {
+                console.error('Rollback error:', rollbackError);
+            }
+        }
+        console.error('Recalculate standings error details:', error);
         (0, responseHandler_1.errorResponse)(res, 'Failed to recalculate standings', 500, 'RECALCULATE_STANDINGS_FAILED');
     }
     finally {

@@ -1,37 +1,4 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getAllSubscribers = exports.getAssociationSubscribers = exports.getSubscriptionStatus = exports.unsubscribe = exports.subscribe = void 0;
 const uuid_1 = require("uuid");
@@ -84,7 +51,8 @@ const types_2 = require("../../types");
  *         description: Invalid email or missing required fields
  */
 const subscribe = async (req, res) => {
-    const client = await (await Promise.resolve().then(() => __importStar(require('../../config/database')))).pool.connect();
+    const client = await database_1.pool.connect();
+    let transactionStarted = false;
     try {
         const { email, association_id, preferences } = req.body;
         // Get IP address from request
@@ -107,17 +75,17 @@ const subscribe = async (req, res) => {
         // Validate association_id is UUID
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (!uuidRegex.test(association_id)) {
-            (0, responseHandler_1.errorResponse)(res, 'Invalid association_id format', 400, 'INVALID_ASSOCOCIATION_ID');
+            (0, responseHandler_1.errorResponse)(res, 'Invalid association_id format', 400, 'INVALID_ASSOCIATION_ID');
             return;
         }
         // Check if association exists
         const associationCheck = await client.query('SELECT id, name FROM associations WHERE id = $1 AND deleted_at IS NULL', [association_id]);
         if (associationCheck.rows.length === 0) {
-            await client.query('ROLLBACK');
             (0, responseHandler_1.errorResponse)(res, 'Association not found', 404, 'ASSOCIATION_NOT_FOUND');
             return;
         }
         await client.query('BEGIN');
+        transactionStarted = true;
         // Check if already subscribed
         const existing = await client.query(`SELECT id, status FROM email_subscriptions
        WHERE LOWER(email) = LOWER($1) AND association_id = $2 AND deleted_at IS NULL`, [email, association_id]);
@@ -125,6 +93,7 @@ const subscribe = async (req, res) => {
             const subscription = existing.rows[0];
             if (subscription.status === 'ACTIVE') {
                 await client.query('ROLLBACK');
+                transactionStarted = false;
                 (0, responseHandler_1.errorResponse)(res, 'Already subscribed to this association', 409, 'ALREADY_SUBSCRIBED');
                 return;
             }
@@ -160,14 +129,22 @@ const subscribe = async (req, res) => {
             }
         }
         await client.query('COMMIT');
+        transactionStarted = false;
         (0, responseHandler_1.successResponse)(res, {
             message: 'Successfully subscribed',
             association: associationCheck.rows[0].name,
         }, 'Subscribed successfully', 201);
     }
     catch (error) {
-        await client.query('ROLLBACK');
-        console.error('Subscribe error:', error);
+        if (transactionStarted) {
+            try {
+                await client.query('ROLLBACK');
+            }
+            catch (rollbackError) {
+                console.error('Rollback error:', rollbackError);
+            }
+        }
+        console.error('Subscribe error details:', error);
         (0, responseHandler_1.errorResponse)(res, 'Failed to subscribe', 500, 'SUBSCRIBE_FAILED');
     }
     finally {
