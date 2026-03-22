@@ -1,6 +1,5 @@
 import { Response } from 'express';
-import pkg from 'uuid';
-const { v4: uuidv4 } = pkg;
+const { v4: uuidv4 } = require("uuid");
 import { query } from '../../config/database';
 import { successResponse, errorResponse, paginatedResponse } from '../../utils/responseHandler';
 import { AuthRequest, TeamCategory, Gender, UserRole } from '../../types';
