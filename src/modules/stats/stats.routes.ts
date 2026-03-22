@@ -10,13 +10,15 @@ import { authenticate } from '../../middleware/auth.middleware';
 
 const router = Router();
 
-// All stats routes require authentication
+// Public routes
+router.get('/dashboard', getDashboardStats);
+
+// Protected routes
 router.use(authenticate);
 
 router.get('/growth', getGrowthTrends);
 router.get('/monthly-activity', getMonthlyActivity);
 router.get('/entity-distribution', getEntityDistribution);
 router.get('/competition-status', getCompetitionStatus);
-router.get('/dashboard', getDashboardStats);
 
 export default router;

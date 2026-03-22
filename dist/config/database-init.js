@@ -246,18 +246,28 @@ async function ensureSchemaUpdates(pool) {
             'ALTER TABLE email_subscriptions ADD COLUMN IF NOT EXISTS preferences JSONB DEFAULT \'{"news": true, "fixtures": true, "results": true}\'',
             'ALTER TABLE email_subscriptions ADD COLUMN IF NOT EXISTS subscription_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
             'ALTER TABLE email_subscriptions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP',
-            'ALTER TABLE email_subscriptions ADD CONSTRAINT email_subscriptions_email_association_key UNIQUE (email, association_id)'
+            'ALTER TABLE email_subscriptions ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT \'ACTIVE\'',
+            // We use a separate try-catch for constraints later or use a different approach
         ];
         for (const updateQuery of otherUpdates) {
             try {
                 await pool.query(updateQuery);
             }
             catch (err) {
-                // 42701: column already exists, 42P07: relation already exists, 42804: datatype mismatch (ignore for now)
-                if (err.code !== '42701' && err.code !== '42P07') {
+                // 42701: column already exists, 42P07: relation already exists, 42804: datatype mismatch, 42P16: duplicate constraint
+                if (err.code !== '42701' && err.code !== '42P07' && err.code !== '42P16') {
                     console.warn(`⚠️ Warning applying update: ${updateQuery}`);
                     console.warn(`   Error: ${err.message} (Code: ${err.code})`);
                 }
+            }
+        }
+        // Add unique constraint separately to catch "already exists" error
+        try {
+            await pool.query('ALTER TABLE email_subscriptions ADD CONSTRAINT email_subscriptions_email_association_key UNIQUE (email, association_id)');
+        }
+        catch (err) {
+            if (err.code !== '42P16') { // 42P16 is duplicate_object
+                console.warn('⚠️ Warning adding unique constraint to email_subscriptions:', err.message);
             }
         }
         // 4. Create missing functions and views

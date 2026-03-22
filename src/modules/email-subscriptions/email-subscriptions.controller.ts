@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { pool, query } from '../../config/database';
 import { successResponse, errorResponse } from '../../utils/responseHandler';
 import { AuthRequest, UserRole } from '../../types';
+import { logger } from '../../utils/logger';
 import { AuditAction } from '../../types';
 
 /**
@@ -336,19 +337,36 @@ export const getSubscriptionStatus = async (
     }
 
     const subscription = result.rows[0];
+    let parsedPreferences = {};
+
+    try {
+      if (subscription.preferences) {
+        parsedPreferences = typeof subscription.preferences === 'string'
+          ? JSON.parse(subscription.preferences)
+          : subscription.preferences;
+      }
+    } catch (parseError) {
+      console.error('Error parsing subscription preferences:', parseError, subscription.preferences);
+      // Fallback to empty preferences if parsing fails
+      parsedPreferences = {};
+    }
 
     successResponse(
       res,
       {
         subscribed: subscription.status === 'ACTIVE',
-        status: subscription.status,
-        preferences: typeof subscription.preferences === 'string' ? JSON.parse(subscription.preferences) : subscription.preferences,
-        subscriptionDate: subscription.subscription_date,
+        status: subscription.status || 'ACTIVE',
+        preferences: parsedPreferences,
+        subscriptionDate: subscription.subscription_date || subscription.created_at,
       },
       'Subscription status retrieved'
     );
-  } catch (error) {
-    console.error('Get subscription status error details:', error);
+  } catch (error: any) {
+    logger.error('Get subscription status error details', {
+      error: error.message,
+      stack: error.stack,
+      query: req.query
+    });
     errorResponse(res, 'Failed to get subscription status', 500, 'GET_STATUS_FAILED');
   }
 };

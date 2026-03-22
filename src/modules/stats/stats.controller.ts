@@ -253,7 +253,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
       upcomingFixtures: 0,
     };
 
-    if (userRole === 'SUPER_ADMIN') {
+    if (userRole === 'SUPER_ADMIN' || !req.user) {
       // Super admin sees everything
       const [associations, clubs, teams, competitions, fixtures, news] = await Promise.all([
         query('SELECT COUNT(*) FROM associations WHERE deleted_at IS NULL'),
