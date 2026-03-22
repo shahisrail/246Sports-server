@@ -229,8 +229,13 @@ export async function ensureSchemaUpdates(pool: Pool): Promise<void> {
       try {
         await pool.query(updateQuery);
       } catch (err: any) {
-        // 42701: column already exists, 42P07: relation already exists, 42804: datatype mismatch, 42P16: duplicate constraint
-        if (err.code !== '42701' && err.code !== '42P07' && err.code !== '42P16') {
+        // 42701: column already exists
+        // 42P07: relation (table/index) already exists
+        // 42710: duplicate_object (constraint already exists)
+        // 42P16: duplicate_function or other invalid table definition errors
+        const ignoredCodes = ['42701', '42P07', '42710', '42P16'];
+        
+        if (!ignoredCodes.includes(err.code)) {
           console.warn(`⚠️ Warning applying update: ${updateQuery}`);
           console.warn(`   Error: ${err.message} (Code: ${err.code})`);
         }
@@ -241,8 +246,9 @@ export async function ensureSchemaUpdates(pool: Pool): Promise<void> {
     try {
       await pool.query('ALTER TABLE email_subscriptions ADD CONSTRAINT email_subscriptions_email_association_key UNIQUE (email, association_id)');
     } catch (err: any) {
-      if (err.code !== '42P16') { // 42P16 is duplicate_object
-        console.warn('⚠️ Warning adding unique constraint to email_subscriptions:', err.message);
+      // 42710 is duplicate_object (for constraints)
+      if (err.code !== '42710' && err.code !== '42P16') {
+        console.warn('⚠️ Warning adding unique constraint to email_subscriptions:', err.message, `(Code: ${err.code})`);
       }
     }
 

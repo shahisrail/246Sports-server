@@ -58,7 +58,16 @@ export const subscribe = async (
   let transactionStarted = false;
 
   try {
-    const { email, association_id, preferences } = req.body;
+    const { email: emailRaw, association_id: associationIdRaw, preferences } = req.body;
+
+    // Validation
+    if (!emailRaw || !associationIdRaw) {
+      errorResponse(res, 'Email and association_id are required', 400, 'MISSING_FIELDS');
+      return;
+    }
+
+    const email = emailRaw.toString().trim().toLowerCase();
+    const association_id = associationIdRaw.toString().trim();
 
     // Get IP address from request
     const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
@@ -66,12 +75,6 @@ export const subscribe = async (
                       req.socket?.remoteAddress ||
                       req.ip ||
                       null;
-
-    // Validation
-    if (!email || !association_id) {
-      errorResponse(res, 'Email and association_id are required', 400, 'MISSING_FIELDS');
-      return;
-    }
 
     // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -101,7 +104,7 @@ export const subscribe = async (
     await client.query('BEGIN');
     transactionStarted = true;
 
-    // Check if already subscribed
+    // Check if already subscribed - use direct query for reliability
     const existing = await client.query(
       `SELECT id, status FROM email_subscriptions
        WHERE LOWER(email) = LOWER($1) AND association_id = $2 AND deleted_at IS NULL`,
@@ -130,15 +133,20 @@ export const subscribe = async (
       const subscriptionId = uuidv4();
       const unsubscribeToken = uuidv4();
 
+      // Ensure preferences is a valid object
+      const safePreferences = (preferences && typeof preferences === 'object') 
+        ? preferences 
+        : { news: true, fixtures: true, results: true };
+
       await client.query(
         `INSERT INTO email_subscriptions (id, email, association_id, unsubscribe_token, preferences, ip_address)
          VALUES ($1, $2, $3, $4, $5, $6)`,
         [
           subscriptionId,
-          email.toLowerCase(),
+          email,
           association_id,
           unsubscribeToken,
-          JSON.stringify(preferences || { news: true, fixtures: true, results: true }),
+          JSON.stringify(safePreferences),
           ipAddress,
         ]
       );
@@ -172,7 +180,7 @@ export const subscribe = async (
       'Subscribed successfully',
       201
     );
-  } catch (error) {
+  } catch (error: any) {
     if (transactionStarted) {
       try {
         await client.query('ROLLBACK');
@@ -180,8 +188,13 @@ export const subscribe = async (
         console.error('Rollback error:', rollbackError);
       }
     }
-    console.error('Subscribe error details:', error);
-    errorResponse(res, 'Failed to subscribe', 500, 'SUBSCRIBE_FAILED');
+    logger.error('Subscribe error details', { 
+      message: error.message,
+      code: error.code,
+      stack: error.stack,
+      body: req.body 
+    });
+    errorResponse(res, `Failed to subscribe: ${error.message}`, 500, 'SUBSCRIBE_FAILED');
   } finally {
     client.release();
   }
@@ -287,36 +300,44 @@ export const getSubscriptionStatus = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { email, association_id } = req.query;
+    const emailRaw = req.query.email;
+    const associationIdRaw = req.query.association_id;
 
-    if (!email || !association_id) {
+    if (!emailRaw || !associationIdRaw) {
       errorResponse(res, 'Email and association_id are required', 400, 'MISSING_FIELDS');
       return;
     }
 
-    const associationIdStr = association_id.toString();
+    const email = emailRaw.toString().trim();
+    const associationId = associationIdRaw.toString().trim();
 
     // Validate UUID format for association_id
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(associationIdStr)) {
+    if (!uuidRegex.test(associationId)) {
       errorResponse(res, 'Invalid association_id format', 400, 'INVALID_ASSOCIATION_ID');
       return;
     }
 
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email.toString())) {
+    if (!emailRegex.test(email)) {
       errorResponse(res, 'Invalid email format', 400, 'INVALID_EMAIL');
       return;
     }
 
-    // Use database function to check subscription status
-    const isSubscribed = await query(
-      `SELECT is_subscribed_to_association($1, $2) as subscribed`,
-      [email, associationIdStr]
+    // Use direct query instead of database function for reliability
+    const isSubscribedResult = await query(
+      `SELECT EXISTS (
+        SELECT 1 FROM email_subscriptions 
+        WHERE LOWER(email) = LOWER($1) 
+        AND association_id = $2 
+        AND status = 'ACTIVE'
+        AND deleted_at IS NULL
+      ) as subscribed`,
+      [email, associationId]
     );
 
-    const subscribed = isSubscribed.rows[0]?.subscribed || false;
+    const subscribed = isSubscribedResult.rows[0]?.subscribed || false;
 
     if (!subscribed) {
       successResponse(res, { subscribed: false }, 'Not subscribed');
@@ -325,10 +346,10 @@ export const getSubscriptionStatus = async (
 
     // Get full subscription details
     const result = await query(
-      `SELECT status, preferences, subscription_date
+      `SELECT status, preferences, subscription_date, created_at
        FROM email_subscriptions
        WHERE LOWER(email) = LOWER($1) AND association_id = $2 AND deleted_at IS NULL`,
-      [email, associationIdStr]
+      [email, associationId]
     );
 
     if (result.rows.length === 0) {
@@ -347,8 +368,7 @@ export const getSubscriptionStatus = async (
       }
     } catch (parseError) {
       console.error('Error parsing subscription preferences:', parseError, subscription.preferences);
-      // Fallback to empty preferences if parsing fails
-      parsedPreferences = {};
+      parsedPreferences = { news: true, fixtures: true, results: true };
     }
 
     successResponse(
@@ -363,11 +383,13 @@ export const getSubscriptionStatus = async (
     );
   } catch (error: any) {
     logger.error('Get subscription status error details', {
-      error: error.message,
+      message: error.message,
+      code: error.code,
       stack: error.stack,
       query: req.query
     });
-    errorResponse(res, 'Failed to get subscription status', 500, 'GET_STATUS_FAILED');
+    // Return more info if available to help debug 500
+    errorResponse(res, `Failed to get subscription status: ${error.message}`, 500, 'GET_STATUS_FAILED');
   }
 };
 
