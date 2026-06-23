@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteNews = exports.updateNews = exports.createNews = exports.getNewsBySlug = exports.getNews = void 0;
+exports.deleteNews = exports.updateNews = exports.createNews = exports.getNewsBySlug = exports.getNewsById = exports.getNews = void 0;
 const uuid_1 = require("uuid");
 const slugify_1 = __importDefault(require("slugify"));
 const database_1 = require("../../config/database");
@@ -131,6 +131,65 @@ const getNews = async (req, res) => {
 exports.getNews = getNews;
 /**
  * @swagger
+ * /news/{id}:
+ *   get:
+ *     summary: Get news article by ID
+ *     tags: [News]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: News article retrieved successfully
+ *       404:
+ *         description: News article not found
+ */
+const getNewsById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await (0, database_1.query)(`SELECT
+        n.id,
+        n.association_id,
+        n.title,
+        n.slug,
+        n.excerpt,
+        n.content,
+        n.featured_image as "featuredImageUrl",
+        n.sport_id_new as "sportId",
+        s.name as sport_name,
+        s.slug as sport_slug,
+        n.category,
+        n.status,
+        n.published_at as "publishedAt",
+        n.created_by as author_id,
+        n.created_at as "createdAt",
+        n.updated_at as "updatedAt",
+        a.name as association_name,
+        u.name as author_name,
+        u.email as author_email
+       FROM news n
+       LEFT JOIN associations a ON n.association_id = a.id
+       LEFT JOIN users u ON n.created_by = u.id
+       LEFT JOIN sports s ON n.sport_id_new = s.id
+       WHERE n.id = $1 AND n.deleted_at IS NULL`, [id]);
+        if (result.rows.length === 0) {
+            (0, responseHandler_1.errorResponse)(res, 'News article not found', 404, 'NEWS_NOT_FOUND');
+            return;
+        }
+        (0, responseHandler_1.successResponse)(res, result.rows[0], 'News article retrieved successfully');
+    }
+    catch (error) {
+        logger_1.logger.error('Get news by ID error', { error, id: req.params.id });
+        (0, responseHandler_1.errorResponse)(res, 'Failed to get news article', 500, 'GET_NEWS_FAILED');
+    }
+};
+exports.getNewsById = getNewsById;
+/**
+ * @swagger
  * /news/{slug}:
  *   get:
  *     summary: Get news article by slug
@@ -176,8 +235,6 @@ const getNewsBySlug = async (req, res) => {
             (0, responseHandler_1.errorResponse)(res, 'News article not found', 404, 'NEWS_NOT_FOUND');
             return;
         }
-        // Increment view count (optional)
-        await (0, database_1.query)('UPDATE news SET view_count = COALESCE(view_count, 0) + 1 WHERE slug = $1', [slug]);
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'News article retrieved successfully');
     }
     catch (error) {

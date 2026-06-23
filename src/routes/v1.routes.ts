@@ -26,6 +26,7 @@ import sportsRoutes from '../modules/sports/sports.routes';
 import emailRoutes from '../modules/email/email.routes';
 import invitationsRoutes from '../modules/invitations/invitations.routes';
 import emailSubscriptionsRoutes from '../modules/email-subscriptions/email-subscriptions.routes';
+import videosRoutes from '../modules/videos/videos.routes';
 
 const router = express.Router();
 
@@ -189,5 +190,6 @@ router.use('/stats', statsRoutes);
 router.use('/email', emailRoutes);
 router.use('/email-subscriptions', emailSubscriptionsRoutes);
 router.use('/invitations', invitationsRoutes);
+router.use('/videos', videosRoutes);
 
 export default router;

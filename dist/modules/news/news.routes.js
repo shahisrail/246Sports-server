@@ -48,6 +48,7 @@ const router = (0, express_1.Router)();
  */
 // Public routes
 router.get('/', newsController.getNews);
+router.get('/id/:id', (0, validation_middleware_1.validateUUID)('id'), newsController.getNewsById);
 router.get('/:slug', newsController.getNewsBySlug);
 // Protected routes - require authentication
 router.post('/', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(types_1.UserRole.SUPER_ADMIN, types_1.UserRole.ASSOCIATION_ADMIN), rateLimit_middleware_1.writeRateLimit, newsController.createNews);

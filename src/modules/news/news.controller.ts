@@ -141,6 +141,70 @@ export const getNews = async (req: AuthRequest, res: Response): Promise<void> =>
 
 /**
  * @swagger
+ * /news/{id}:
+ *   get:
+ *     summary: Get news article by ID
+ *     tags: [News]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: News article retrieved successfully
+ *       404:
+ *         description: News article not found
+ */
+export const getNewsById = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    const result = await query(
+      `SELECT
+        n.id,
+        n.association_id,
+        n.title,
+        n.slug,
+        n.excerpt,
+        n.content,
+        n.featured_image as "featuredImageUrl",
+        n.sport_id_new as "sportId",
+        s.name as sport_name,
+        s.slug as sport_slug,
+        n.category,
+        n.status,
+        n.published_at as "publishedAt",
+        n.created_by as author_id,
+        n.created_at as "createdAt",
+        n.updated_at as "updatedAt",
+        a.name as association_name,
+        u.name as author_name,
+        u.email as author_email
+       FROM news n
+       LEFT JOIN associations a ON n.association_id = a.id
+       LEFT JOIN users u ON n.created_by = u.id
+       LEFT JOIN sports s ON n.sport_id_new = s.id
+       WHERE n.id = $1 AND n.deleted_at IS NULL`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      errorResponse(res, 'News article not found', 404, 'NEWS_NOT_FOUND');
+      return;
+    }
+
+    successResponse(res, result.rows[0], 'News article retrieved successfully');
+  } catch (error) {
+    logger.error('Get news by ID error', { error, id: req.params.id });
+    errorResponse(res, 'Failed to get news article', 500, 'GET_NEWS_FAILED');
+  }
+};
+
+/**
+ * @swagger
  * /news/{slug}:
  *   get:
  *     summary: Get news article by slug
@@ -191,9 +255,6 @@ export const getNewsBySlug = async (req: AuthRequest, res: Response): Promise<vo
       errorResponse(res, 'News article not found', 404, 'NEWS_NOT_FOUND');
       return;
     }
-
-    // Increment view count (optional)
-    await query('UPDATE news SET view_count = COALESCE(view_count, 0) + 1 WHERE slug = $1', [slug]);
 
     successResponse(res, result.rows[0], 'News article retrieved successfully');
   } catch (error) {

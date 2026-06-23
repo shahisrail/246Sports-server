@@ -29,6 +29,7 @@ const sports_routes_1 = __importDefault(require("../modules/sports/sports.routes
 const email_routes_1 = __importDefault(require("../modules/email/email.routes"));
 const invitations_routes_1 = __importDefault(require("../modules/invitations/invitations.routes"));
 const email_subscriptions_routes_1 = __importDefault(require("../modules/email-subscriptions/email-subscriptions.routes"));
+const videos_routes_1 = __importDefault(require("../modules/videos/videos.routes"));
 const router = express_1.default.Router();
 /**
  * @swagger
@@ -185,5 +186,6 @@ router.use('/stats', stats_routes_1.default);
 router.use('/email', email_routes_1.default);
 router.use('/email-subscriptions', email_subscriptions_routes_1.default);
 router.use('/invitations', invitations_routes_1.default);
+router.use('/videos', videos_routes_1.default);
 exports.default = router;
 //# sourceMappingURL=v1.routes.js.map

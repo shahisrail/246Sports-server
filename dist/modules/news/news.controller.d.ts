@@ -40,6 +40,26 @@ import { AuthRequest } from '../../types';
 export declare const getNews: (req: AuthRequest, res: Response) => Promise<void>;
 /**
  * @swagger
+ * /news/{id}:
+ *   get:
+ *     summary: Get news article by ID
+ *     tags: [News]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: News article retrieved successfully
+ *       404:
+ *         description: News article not found
+ */
+export declare const getNewsById: (req: AuthRequest, res: Response) => Promise<void>;
+/**
+ * @swagger
  * /news/{slug}:
  *   get:
  *     summary: Get news article by slug

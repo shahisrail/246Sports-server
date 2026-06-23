@@ -16,6 +16,7 @@ const router = Router();
 
 // Public routes
 router.get('/', newsController.getNews);
+router.get('/id/:id', validateUUID('id'), newsController.getNewsById);
 router.get('/:slug', newsController.getNewsBySlug);
 
 // Protected routes - require authentication
