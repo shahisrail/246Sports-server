@@ -184,6 +184,21 @@ export async function ensureSchemaUpdates(pool: Pool): Promise<void> {
         accepted_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS cms_pages (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        page_key VARCHAR(100) NOT NULL UNIQUE,
+        route_path VARCHAR(255),
+        title VARCHAR(255) NOT NULL,
+        status VARCHAR(20) DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'ARCHIVED')),
+        content JSONB DEFAULT '{}',
+        seo JSONB DEFAULT '{}',
+        published_at TIMESTAMP,
+        created_by UUID REFERENCES users(id),
+        updated_by UUID REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP
       )`
     ];
 
@@ -227,6 +242,14 @@ export async function ensureSchemaUpdates(pool: Pool): Promise<void> {
       'ALTER TABLE email_subscriptions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
       'ALTER TABLE email_subscriptions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP',
       'ALTER TABLE email_subscriptions ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT \'ACTIVE\'',
+      'ALTER TABLE cms_pages ADD COLUMN IF NOT EXISTS route_path VARCHAR(255)',
+      'ALTER TABLE cms_pages ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT \'DRAFT\'',
+      'ALTER TABLE cms_pages ADD COLUMN IF NOT EXISTS content JSONB DEFAULT \'{}\'',
+      'ALTER TABLE cms_pages ADD COLUMN IF NOT EXISTS seo JSONB DEFAULT \'{}\'',
+      'ALTER TABLE cms_pages ADD COLUMN IF NOT EXISTS published_at TIMESTAMP',
+      'ALTER TABLE cms_pages ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id)',
+      'ALTER TABLE cms_pages ADD COLUMN IF NOT EXISTS updated_by UUID REFERENCES users(id)',
+      'ALTER TABLE cms_pages ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP',
       // We use a separate try-catch for constraints later or use a different approach
     ];
 
@@ -308,6 +331,20 @@ export async function ensureSchemaUpdates(pool: Pool): Promise<void> {
         await pool.query(schemaQuery);
       } catch (err: any) {
         console.error(`❌ Error creating schema object: ${err.message}`);
+      }
+    }
+
+    const cmsIndexes = [
+      'CREATE INDEX IF NOT EXISTS idx_cms_pages_key ON cms_pages(page_key)',
+      'CREATE INDEX IF NOT EXISTS idx_cms_pages_status ON cms_pages(status)',
+      'CREATE INDEX IF NOT EXISTS idx_cms_pages_route ON cms_pages(route_path)'
+    ];
+
+    for (const indexQuery of cmsIndexes) {
+      try {
+        await pool.query(indexQuery);
+      } catch (err: any) {
+        console.warn(`⚠️ Warning creating CMS index: ${err.message}`);
       }
     }
 

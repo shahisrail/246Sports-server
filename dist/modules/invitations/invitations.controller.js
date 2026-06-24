@@ -10,6 +10,7 @@ const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
 const email_service_1 = require("../../services/email.service");
 const logger_1 = require("../../utils/logger");
+const jwt_1 = require("../../utils/jwt");
 /**
  * @swagger
  * /invitations/accept:
@@ -146,27 +147,50 @@ const completeInvitation = async (req, res) => {
             return;
         }
         const invitation = invitationResult.rows[0];
-        // Check if user already exists with this email
-        const existingUser = await (0, database_1.query)('SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL', [invitation.email]);
-        if (existingUser.rows.length > 0) {
-            (0, responseHandler_1.errorResponse)(res, 'A user with this email already exists', 400, 'USER_ALREADY_EXISTS');
-            return;
-        }
         // Hash password
         const hashedPassword = await bcrypt_1.default.hash(password, 10);
-        // Create user
-        const userId = (0, uuid_1.v4)();
-        const userResult = await (0, database_1.query)(`INSERT INTO users (id, email, name, password, role, association_id, club_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id, email, name, role, association_id, club_id`, [
-            userId,
-            invitation.email,
-            invitation.name,
-            hashedPassword,
-            invitation.role,
-            invitation.association_id,
-            invitation.club_id,
-        ]);
+        // If the invited email already has a PUBLIC account, activate it with the invited role.
+        // Otherwise create the account directly from the invitation.
+        const existingUser = await (0, database_1.query)('SELECT id, role FROM users WHERE email = $1 AND deleted_at IS NULL', [invitation.email]);
+        let userResult;
+        if (existingUser.rows.length > 0) {
+            const existing = existingUser.rows[0];
+            if (existing.role !== 'PUBLIC' && existing.role !== invitation.role) {
+                (0, responseHandler_1.errorResponse)(res, 'This email already belongs to another active account', 400, 'USER_ALREADY_ACTIVE');
+                return;
+            }
+            userResult = await (0, database_1.query)(`UPDATE users
+         SET name = $1,
+             password = $2,
+             role = $3,
+             association_id = $4,
+             club_id = $5,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $6
+         RETURNING id, email, name, role, association_id, club_id`, [
+                invitation.name,
+                hashedPassword,
+                invitation.role,
+                invitation.association_id,
+                invitation.club_id,
+                existing.id,
+            ]);
+            await (0, database_1.query)('DELETE FROM refresh_tokens WHERE user_id = $1', [existing.id]);
+        }
+        else {
+            const userId = (0, uuid_1.v4)();
+            userResult = await (0, database_1.query)(`INSERT INTO users (id, email, name, password, role, association_id, club_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id, email, name, role, association_id, club_id`, [
+                userId,
+                invitation.email,
+                invitation.name,
+                hashedPassword,
+                invitation.role,
+                invitation.association_id,
+                invitation.club_id,
+            ]);
+        }
         // Mark invitation as accepted
         await (0, database_1.query)('UPDATE user_invitations SET accepted_at = CURRENT_TIMESTAMP WHERE token = $1', [token]);
         // Send welcome email
@@ -185,19 +209,26 @@ const completeInvitation = async (req, res) => {
             // Don't fail the request if email fails
         }
         const user = userResult.rows[0];
-        // Generate JWT token
-        const jwt = require('jsonwebtoken');
-        const jwtSecret = process.env.JWT_SECRET || 'your-secret-key';
-        const token_expires = process.env.JWT_EXPIRES_IN || '7d';
-        const jwtToken = jwt.sign({
+        const tokenPayload = {
             userId: user.id,
             email: user.email,
             role: user.role,
             associationId: user.association_id,
             clubId: user.club_id,
-        }, jwtSecret, { expiresIn: token_expires });
+        };
+        const accessToken = (0, jwt_1.generateToken)(tokenPayload);
+        const refreshToken = (0, uuid_1.v4)();
+        const refreshExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        await (0, database_1.query)(`INSERT INTO refresh_tokens (id, user_id, token, expires_at, device_info, user_agent)
+       VALUES ($1, $2, $3, $4, $5, $6)`, [
+            (0, uuid_1.v4)(),
+            user.id,
+            refreshToken,
+            refreshExpiresAt,
+            req.headers['user-agent'] || null,
+            req.get('user-agent') || null,
+        ]);
         (0, responseHandler_1.successResponse)(res, {
-            token: jwtToken,
             user: {
                 id: user.id,
                 email: user.email,
@@ -206,6 +237,11 @@ const completeInvitation = async (req, res) => {
                 associationId: user.association_id,
                 clubId: user.club_id,
             },
+            accessToken,
+            refreshToken,
+            tokenType: 'Bearer',
+            expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+            refreshExpiresIn: '7d',
         }, 'Account created successfully', 201);
     }
     catch (error) {

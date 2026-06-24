@@ -6,6 +6,7 @@ import { successResponse, errorResponse } from '../../utils/responseHandler';
 import { AuthRequest } from '../../types';
 import { emailService } from '../../services/email.service';
 import { logger } from '../../utils/logger';
+import { generateToken } from '../../utils/jwt';
 
 /**
  * @swagger
@@ -160,36 +161,63 @@ export const completeInvitation = async (req: AuthRequest, res: Response): Promi
 
     const invitation = invitationResult.rows[0];
 
-    // Check if user already exists with this email
-    const existingUser = await query(
-      'SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL',
-      [invitation.email]
-    );
-
-    if (existingUser.rows.length > 0) {
-      errorResponse(res, 'A user with this email already exists', 400, 'USER_ALREADY_EXISTS');
-      return;
-    }
-
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user
-    const userId = uuidv4();
-    const userResult = await query(
-      `INSERT INTO users (id, email, name, password, role, association_id, club_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id, email, name, role, association_id, club_id`,
-      [
-        userId,
-        invitation.email,
-        invitation.name,
-        hashedPassword,
-        invitation.role,
-        invitation.association_id,
-        invitation.club_id,
-      ]
+    // If the invited email already has a PUBLIC account, activate it with the invited role.
+    // Otherwise create the account directly from the invitation.
+    const existingUser = await query(
+      'SELECT id, role FROM users WHERE email = $1 AND deleted_at IS NULL',
+      [invitation.email]
     );
+    let userResult;
+
+    if (existingUser.rows.length > 0) {
+      const existing = existingUser.rows[0];
+
+      if (existing.role !== 'PUBLIC' && existing.role !== invitation.role) {
+        errorResponse(res, 'This email already belongs to another active account', 400, 'USER_ALREADY_ACTIVE');
+        return;
+      }
+
+      userResult = await query(
+        `UPDATE users
+         SET name = $1,
+             password = $2,
+             role = $3,
+             association_id = $4,
+             club_id = $5,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $6
+         RETURNING id, email, name, role, association_id, club_id`,
+        [
+          invitation.name,
+          hashedPassword,
+          invitation.role,
+          invitation.association_id,
+          invitation.club_id,
+          existing.id,
+        ]
+      );
+
+      await query('DELETE FROM refresh_tokens WHERE user_id = $1', [existing.id]);
+    } else {
+      const userId = uuidv4();
+      userResult = await query(
+        `INSERT INTO users (id, email, name, password, role, association_id, club_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id, email, name, role, association_id, club_id`,
+        [
+          userId,
+          invitation.email,
+          invitation.name,
+          hashedPassword,
+          invitation.role,
+          invitation.association_id,
+          invitation.club_id,
+        ]
+      );
+    }
 
     // Mark invitation as accepted
     await query(
@@ -214,25 +242,32 @@ export const completeInvitation = async (req: AuthRequest, res: Response): Promi
 
     const user = userResult.rows[0];
 
-    // Generate JWT token
-    const jwt = require('jsonwebtoken');
-    const jwtSecret = process.env.JWT_SECRET || 'your-secret-key';
-    const token_expires = process.env.JWT_EXPIRES_IN || '7d';
+    const tokenPayload = {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      associationId: user.association_id,
+      clubId: user.club_id,
+    };
 
-    const jwtToken = jwt.sign(
-      {
-        userId: user.id,
-        email: user.email,
-        role: user.role,
-        associationId: user.association_id,
-        clubId: user.club_id,
-      },
-      jwtSecret,
-      { expiresIn: token_expires }
+    const accessToken = generateToken(tokenPayload);
+    const refreshToken = uuidv4();
+    const refreshExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    await query(
+      `INSERT INTO refresh_tokens (id, user_id, token, expires_at, device_info, user_agent)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        uuidv4(),
+        user.id,
+        refreshToken,
+        refreshExpiresAt,
+        req.headers['user-agent'] || null,
+        req.get('user-agent') || null,
+      ]
     );
 
     successResponse(res, {
-      token: jwtToken,
       user: {
         id: user.id,
         email: user.email,
@@ -241,6 +276,11 @@ export const completeInvitation = async (req: AuthRequest, res: Response): Promi
         associationId: user.association_id,
         clubId: user.club_id,
       },
+      accessToken,
+      refreshToken,
+      tokenType: 'Bearer',
+      expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+      refreshExpiresIn: '7d',
     }, 'Account created successfully', 201);
   } catch (error) {
     logger.error('Complete invitation error', { error });

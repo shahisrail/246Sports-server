@@ -27,6 +27,7 @@ import emailRoutes from '../modules/email/email.routes';
 import invitationsRoutes from '../modules/invitations/invitations.routes';
 import emailSubscriptionsRoutes from '../modules/email-subscriptions/email-subscriptions.routes';
 import videosRoutes from '../modules/videos/videos.routes';
+import cmsRoutes from '../modules/cms/cms.routes';
 
 const router = express.Router();
 
@@ -191,5 +192,6 @@ router.use('/email', emailRoutes);
 router.use('/email-subscriptions', emailSubscriptionsRoutes);
 router.use('/invitations', invitationsRoutes);
 router.use('/videos', videosRoutes);
+router.use('/cms', cmsRoutes);
 
 export default router;

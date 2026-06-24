@@ -134,8 +134,9 @@ export const createAssociationAdmin = async (req: AuthRequest, res: Response): P
     );
 
     // Send welcome email with credentials
+    let emailSent = false;
     try {
-      await emailService.sendWelcomeWithCredentials({
+      emailSent = await emailService.sendWelcomeWithCredentials({
         name: user.name,
         email: user.email,
         password: password,
@@ -156,6 +157,7 @@ export const createAssociationAdmin = async (req: AuthRequest, res: Response): P
         email: user.email,
         role: user.role,
         association_id: user.association_id,
+        email_sent: emailSent,
       },
       'Association admin created successfully',
       201
@@ -294,8 +296,9 @@ export const createClubAdmin = async (req: AuthRequest, res: Response): Promise<
     );
 
     // Send welcome email with credentials
+    let emailSent = false;
     try {
-      await emailService.sendWelcomeWithCredentials({
+      emailSent = await emailService.sendWelcomeWithCredentials({
         name: user.name,
         email: user.email,
         password: password,
@@ -317,6 +320,7 @@ export const createClubAdmin = async (req: AuthRequest, res: Response): Promise<
         role: user.role,
         club_id: user.club_id,
         association_id: user.association_id,
+        email_sent: emailSent,
       },
       'Club admin created successfully',
       201
@@ -761,8 +765,9 @@ export const createSuperAdmin = async (req: AuthRequest, res: Response): Promise
     );
 
     // Send welcome email with credentials
+    let emailSent = false;
     try {
-      await emailService.sendWelcomeWithCredentials({
+      emailSent = await emailService.sendWelcomeWithCredentials({
         name: user.name,
         email: user.email,
         password: password,
@@ -775,7 +780,7 @@ export const createSuperAdmin = async (req: AuthRequest, res: Response): Promise
       // Don't fail the request if email fails
     }
 
-    successResponse(res, user, 'Super Admin created successfully', 201);
+    successResponse(res, { ...user, email_sent: emailSent }, 'Super Admin created successfully', 201);
   } catch (error) {
     console.error('Create super admin error:', error);
     errorResponse(res, 'Failed to create super admin', 500, 'CREATE_SUPER_ADMIN_FAILED');

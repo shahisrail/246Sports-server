@@ -4,8 +4,9 @@ exports.validateCreateClub = exports.validateUUID = exports.validateLogin = expo
 const responseHandler_1 = require("../utils/responseHandler");
 const validator_1 = require("../utils/validator");
 const validateRegister = (req, res, next) => {
-    const { name, email, password, role } = req.body;
-    if (!name || !email || !password || !role) {
+    const { name, firstName, lastName, email, password, role } = req.body;
+    const finalName = name || [firstName, lastName].filter(Boolean).join(' ').trim();
+    if (!finalName || !email || !password || !role) {
         (0, responseHandler_1.errorResponse)(res, 'Missing required fields', 400, 'VALIDATION_ERROR');
         return;
     }

@@ -106,10 +106,11 @@ const sendInvitation = async (req, res) => {
             return;
         }
         const associationName = associationResult.rows[0].name;
-        // Check if user already exists
-        const existingUser = await (0, database_1.query)('SELECT id, name FROM users WHERE email = $1 AND deleted_at IS NULL', [email]);
-        if (existingUser.rows.length > 0) {
-            (0, responseHandler_1.errorResponse)(res, 'User with this email already exists', 400, 'USER_ALREADY_EXISTS');
+        // Allow inviting a PUBLIC account so the invite can activate the proper role.
+        // Already-active admin/manager accounts should not be re-invited through this flow.
+        const existingUser = await (0, database_1.query)('SELECT id, name, role FROM users WHERE email = $1 AND deleted_at IS NULL', [email]);
+        if (existingUser.rows.length > 0 && existingUser.rows[0].role !== 'PUBLIC') {
+            (0, responseHandler_1.errorResponse)(res, 'User with this email already has an active role', 400, 'USER_ALREADY_ACTIVE');
             return;
         }
         // Create invitation token (valid for 7 days)

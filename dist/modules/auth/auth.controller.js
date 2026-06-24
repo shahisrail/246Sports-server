@@ -55,7 +55,8 @@ const types_1 = require("../../types");
  */
 const register = async (req, res) => {
     try {
-        const { name, email, password, role, association_id, club_id } = req.body;
+        const { name, firstName, lastName, email, password, role, association_id, club_id } = req.body;
+        const finalName = name || [firstName, lastName].filter(Boolean).join(' ').trim();
         // Check if user already exists
         const existingUser = await (0, database_1.query)('SELECT id FROM users WHERE email = $1', [email]);
         if (existingUser.rows.length > 0) {
@@ -68,7 +69,7 @@ const register = async (req, res) => {
         const userId = (0, uuid_1.v4)();
         const result = await (0, database_1.query)(`INSERT INTO users (id, name, email, password, role, association_id, club_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id, name, email, role, association_id, club_id, created_at`, [userId, name, email, hashedPassword, role, association_id || null, club_id || null]);
+       RETURNING id, name, email, role, association_id, club_id, created_at`, [userId, finalName, email, hashedPassword, role, association_id || null, club_id || null]);
         const user = result.rows[0];
         // Generate token
         const token = (0, jwt_1.generateToken)({

@@ -6,6 +6,12 @@ interface EmailConfig {
   host: string;
   port: number;
   secure: boolean;
+  connectionTimeout: number;
+  greetingTimeout: number;
+  socketTimeout: number;
+  tls: {
+    servername: string;
+  };
   auth: {
     user: string;
     pass: string;
@@ -25,6 +31,12 @@ const getEmailConfig = (): EmailConfig => {
     host,
     port,
     secure,
+    connectionTimeout: 60000,
+    greetingTimeout: 60000,
+    socketTimeout: 120000,
+    tls: {
+      servername: host,
+    },
     auth: {
       user: process.env.SMTP_USER || process.env.EMAIL_USER || '',
       pass: process.env.SMTP_PASS || process.env.EMAIL_PASS || '',

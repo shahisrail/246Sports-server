@@ -7,9 +7,10 @@ export const validateRegister = (
   res: Response,
   next: NextFunction
 ): void => {
-  const { name, email, password, role } = req.body;
+  const { name, firstName, lastName, email, password, role } = req.body;
+  const finalName = name || [firstName, lastName].filter(Boolean).join(' ').trim();
 
-  if (!name || !email || !password || !role) {
+  if (!finalName || !email || !password || !role) {
     errorResponse(res, 'Missing required fields', 400, 'VALIDATION_ERROR');
     return;
   }

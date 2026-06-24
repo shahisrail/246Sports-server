@@ -339,6 +339,23 @@ CREATE TABLE IF NOT EXISTS media (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- CMS pages table
+CREATE TABLE IF NOT EXISTS cms_pages (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    page_key VARCHAR(100) NOT NULL UNIQUE,
+    route_path VARCHAR(255),
+    title VARCHAR(255) NOT NULL,
+    status VARCHAR(20) DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'ARCHIVED')),
+    content JSONB DEFAULT '{}',
+    seo JSONB DEFAULT '{}',
+    published_at TIMESTAMP,
+    created_by UUID REFERENCES users(id),
+    updated_by UUID REFERENCES users(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP
+);
+
 -- Email subscriptions table
 CREATE TABLE IF NOT EXISTS email_subscriptions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -543,6 +560,11 @@ CREATE INDEX IF NOT EXISTS idx_news_association ON news(association_id);
 CREATE INDEX IF NOT EXISTS idx_news_status ON news(status);
 CREATE INDEX IF NOT EXISTS idx_news_published ON news(published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_news_sport ON news(sport);
+
+-- CMS indexes
+CREATE INDEX IF NOT EXISTS idx_cms_pages_key ON cms_pages(page_key);
+CREATE INDEX IF NOT EXISTS idx_cms_pages_status ON cms_pages(status);
+CREATE INDEX IF NOT EXISTS idx_cms_pages_route ON cms_pages(route_path);
 
 -- Email subscriptions indexes
 CREATE INDEX IF NOT EXISTS idx_email_subscriptions_email ON email_subscriptions(email);

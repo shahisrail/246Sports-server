@@ -52,7 +52,8 @@ import { AuditAction } from '../../types';
  */
 export const register = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { name, email, password, role, association_id, club_id } = req.body;
+    const { name, firstName, lastName, email, password, role, association_id, club_id } = req.body;
+    const finalName = name || [firstName, lastName].filter(Boolean).join(' ').trim();
 
     // Check if user already exists
     const existingUser = await query(
@@ -74,7 +75,7 @@ export const register = async (req: AuthRequest, res: Response): Promise<void> =
       `INSERT INTO users (id, name, email, password, role, association_id, club_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id, name, email, role, association_id, club_id, created_at`,
-      [userId, name, email, hashedPassword, role, association_id || null, club_id || null]
+      [userId, finalName, email, hashedPassword, role, association_id || null, club_id || null]
     );
 
     const user = result.rows[0];

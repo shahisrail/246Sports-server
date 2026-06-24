@@ -37,18 +37,18 @@ const express_1 = require("express");
 const emailController = __importStar(require("./email.controller"));
 const auth_middleware_1 = require("../../middleware/auth.middleware");
 const router = (0, express_1.Router)();
-// All email routes require authentication
-router.use(auth_middleware_1.authenticate);
 /**
  * @swagger
  * tags:
  *   name: Email
  *   description: Email management endpoints
  */
-// Send invitation email (ASSOCIATION_ADMIN and SUPER_ADMIN only)
-router.post('/send-invitation', emailController.sendInvitation);
 // Send password reset email (public, no auth required)
 router.post('/send-password-reset', emailController.sendPasswordReset);
+// All email management routes below require authentication
+router.use(auth_middleware_1.authenticate);
+// Send invitation email (ASSOCIATION_ADMIN and SUPER_ADMIN only)
+router.post('/send-invitation', emailController.sendInvitation);
 // Send welcome email (authenticated users)
 router.post('/send-welcome', emailController.sendWelcome);
 // Verify email configuration (SUPER_ADMIN only)

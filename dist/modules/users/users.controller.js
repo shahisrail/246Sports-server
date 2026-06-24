@@ -115,8 +115,9 @@ const createAssociationAdmin = async (req, res) => {
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
        VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user?.userId, types_1.AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role: 'ASSOCIATION_ADMIN', association_id: finalAssociationId })]);
         // Send welcome email with credentials
+        let emailSent = false;
         try {
-            await email_service_1.emailService.sendWelcomeWithCredentials({
+            emailSent = await email_service_1.emailService.sendWelcomeWithCredentials({
                 name: user.name,
                 email: user.email,
                 password: password,
@@ -135,6 +136,7 @@ const createAssociationAdmin = async (req, res) => {
             email: user.email,
             role: user.role,
             association_id: user.association_id,
+            email_sent: emailSent,
         }, 'Association admin created successfully', 201);
     }
     catch (error) {
@@ -249,8 +251,9 @@ const createClubAdmin = async (req, res) => {
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
        VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user?.userId, types_1.AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role: 'CLUB_ADMIN', club_id: finalClubId })]);
         // Send welcome email with credentials
+        let emailSent = false;
         try {
-            await email_service_1.emailService.sendWelcomeWithCredentials({
+            emailSent = await email_service_1.emailService.sendWelcomeWithCredentials({
                 name: user.name,
                 email: user.email,
                 password: password,
@@ -270,6 +273,7 @@ const createClubAdmin = async (req, res) => {
             role: user.role,
             club_id: user.club_id,
             association_id: user.association_id,
+            email_sent: emailSent,
         }, 'Club admin created successfully', 201);
     }
     catch (error) {
@@ -626,8 +630,9 @@ const createSuperAdmin = async (req, res) => {
         await (0, database_1.query)(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
        VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user?.userId, types_1.AuditAction.CREATE, 'USER', userId, JSON.stringify({ email, role: 'SUPER_ADMIN' })]);
         // Send welcome email with credentials
+        let emailSent = false;
         try {
-            await email_service_1.emailService.sendWelcomeWithCredentials({
+            emailSent = await email_service_1.emailService.sendWelcomeWithCredentials({
                 name: user.name,
                 email: user.email,
                 password: password,
@@ -640,7 +645,7 @@ const createSuperAdmin = async (req, res) => {
             console.error('Failed to send welcome email:', emailError);
             // Don't fail the request if email fails
         }
-        (0, responseHandler_1.successResponse)(res, user, 'Super Admin created successfully', 201);
+        (0, responseHandler_1.successResponse)(res, { ...user, email_sent: emailSent }, 'Super Admin created successfully', 201);
     }
     catch (error) {
         console.error('Create super admin error:', error);

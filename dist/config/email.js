@@ -17,6 +17,12 @@ const getEmailConfig = () => {
         host,
         port,
         secure,
+        connectionTimeout: 60000,
+        greetingTimeout: 60000,
+        socketTimeout: 120000,
+        tls: {
+            servername: host,
+        },
         auth: {
             user: process.env.SMTP_USER || process.env.EMAIL_USER || '',
             pass: process.env.SMTP_PASS || process.env.EMAIL_PASS || '',
