@@ -328,7 +328,7 @@ export const getFixtureById = async (req: AuthRequest, res: Response): Promise<v
        LEFT JOIN teams ht ON f.home_team_id = ht.id
        LEFT JOIN teams at ON f.away_team_id = at.id
        LEFT JOIN venues v ON f.venue_id = v.id
-       LEFT JOIN results r ON f.id = r.fixture_id
+       LEFT JOIN results r ON f.id = r.fixture_id AND r.status = 'PUBLISHED'
        WHERE f.id = $1 AND f.deleted_at IS NULL`,
       [id]
     );

@@ -173,6 +173,23 @@ async function ensureSchemaUpdates(pool) {
         }
         // 2. Ensure missing tables exist
         const missingTables = [
+            // Videos table for media content
+            `CREATE TABLE IF NOT EXISTS videos (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        youtube_url VARCHAR(500) NOT NULL,
+        thumbnail_url VARCHAR(500),
+        sport VARCHAR(100),
+        category VARCHAR(100) DEFAULT 'HIGHLIGHTS',
+        event_date DATE,
+        view_count INTEGER DEFAULT 0,
+        is_published BOOLEAN DEFAULT false,
+        created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP WITH TIME ZONE
+      )`,
             `CREATE TABLE IF NOT EXISTS password_reset_tokens (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
         user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -365,6 +382,21 @@ async function ensureSchemaUpdates(pool) {
             }
             catch (err) {
                 console.warn(`⚠️ Warning creating CMS index: ${err.message}`);
+            }
+        }
+        // Create videos table indexes
+        const videoIndexes = [
+            'CREATE INDEX IF NOT EXISTS idx_videos_sport ON videos(sport)',
+            'CREATE INDEX IF NOT EXISTS idx_videos_category ON videos(category)',
+            'CREATE INDEX IF NOT EXISTS idx_videos_event_date ON videos(event_date DESC)',
+            'CREATE INDEX IF NOT EXISTS idx_videos_published ON videos(is_published, deleted_at)'
+        ];
+        for (const indexQuery of videoIndexes) {
+            try {
+                await pool.query(indexQuery);
+            }
+            catch (err) {
+                console.warn(`⚠️ Warning creating videos index: ${err.message}`);
             }
         }
         console.log("✅ Database schema is up to date");

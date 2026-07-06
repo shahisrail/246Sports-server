@@ -245,6 +245,7 @@ const getDashboardStats = async (req, res) => {
             associations: 0,
             clubs: 0,
             teams: 0,
+            sports: 0,
             competitions: 0,
             fixtures: 0,
             news: 0,
@@ -253,10 +254,11 @@ const getDashboardStats = async (req, res) => {
         };
         if (userRole === 'SUPER_ADMIN' || !req.user) {
             // Super admin sees everything
-            const [associations, clubs, teams, competitions, fixtures, news] = await Promise.all([
+            const [associations, clubs, teams, sports, competitions, fixtures, news] = await Promise.all([
                 (0, database_1.query)('SELECT COUNT(*) FROM associations WHERE deleted_at IS NULL'),
                 (0, database_1.query)('SELECT COUNT(*) FROM clubs WHERE deleted_at IS NULL'),
                 (0, database_1.query)('SELECT COUNT(*) FROM teams WHERE deleted_at IS NULL'),
+                (0, database_1.query)('SELECT COUNT(*) FROM sports WHERE deleted_at IS NULL'),
                 (0, database_1.query)('SELECT COUNT(*) FROM competitions WHERE deleted_at IS NULL'),
                 (0, database_1.query)('SELECT COUNT(*) FROM fixtures WHERE deleted_at IS NULL'),
                 (0, database_1.query)('SELECT COUNT(*) FROM news WHERE deleted_at IS NULL'),
@@ -272,6 +274,7 @@ const getDashboardStats = async (req, res) => {
                 associations: parseInt(associations.rows[0].count),
                 clubs: parseInt(clubs.rows[0].count),
                 teams: parseInt(teams.rows[0].count),
+                sports: parseInt(sports.rows[0].count),
                 competitions: parseInt(competitions.rows[0].count),
                 fixtures: parseInt(fixtures.rows[0].count),
                 news: parseInt(news.rows[0].count),
@@ -300,6 +303,7 @@ const getDashboardStats = async (req, res) => {
                 associations: 1, // Their own association
                 clubs: parseInt(clubs.rows[0].count),
                 teams: parseInt(teams.rows[0].count),
+                sports: 0,
                 competitions: parseInt(competitions.rows[0].count),
                 fixtures: parseInt(fixtures.rows[0].count),
                 news: parseInt(news.rows[0].count),
@@ -326,6 +330,7 @@ const getDashboardStats = async (req, res) => {
                 associations: 0,
                 clubs: 1, // Their own club
                 teams: parseInt(teams.rows[0].count),
+                sports: 0,
                 competitions: 0,
                 fixtures: parseInt(fixtures.rows[0].count),
                 news: 0,
@@ -339,6 +344,7 @@ const getDashboardStats = async (req, res) => {
                 associations: 0,
                 clubs: 0,
                 teams: 0,
+                sports: 0,
                 competitions: 0,
                 fixtures: 0,
                 news: 0,

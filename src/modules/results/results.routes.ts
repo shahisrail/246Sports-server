@@ -169,6 +169,13 @@ router.put(
   validateUUID('id'),
   resultsController.confirmResult
 );
+router.patch(
+  '/:id/confirm',
+  authenticate,
+  authorize(UserRole.SUPER_ADMIN, UserRole.ASSOCIATION_ADMIN, UserRole.COMPETITION_MANAGER),
+  validateUUID('id'),
+  resultsController.confirmResult
+);
 
 /**
  * @swagger
@@ -196,6 +203,13 @@ router.put(
  *         description: Result not found
  */
 router.put(
+  '/:id/publish',
+  authenticate,
+  authorize(UserRole.SUPER_ADMIN, UserRole.ASSOCIATION_ADMIN, UserRole.COMPETITION_MANAGER),
+  validateUUID('id'),
+  resultsController.publishResult
+);
+router.patch(
   '/:id/publish',
   authenticate,
   authorize(UserRole.SUPER_ADMIN, UserRole.ASSOCIATION_ADMIN, UserRole.COMPETITION_MANAGER),

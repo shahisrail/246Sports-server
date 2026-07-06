@@ -187,6 +187,7 @@ router.post('/', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize
  *         description: Result not found
  */
 router.put('/:id/confirm', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(types_1.UserRole.SUPER_ADMIN, types_1.UserRole.ASSOCIATION_ADMIN, types_1.UserRole.COMPETITION_MANAGER), (0, validation_middleware_1.validateUUID)('id'), resultsController.confirmResult);
+router.patch('/:id/confirm', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(types_1.UserRole.SUPER_ADMIN, types_1.UserRole.ASSOCIATION_ADMIN, types_1.UserRole.COMPETITION_MANAGER), (0, validation_middleware_1.validateUUID)('id'), resultsController.confirmResult);
 /**
  * @swagger
  * /api/v1/results/{id}/publish:
@@ -213,5 +214,6 @@ router.put('/:id/confirm', auth_middleware_1.authenticate, (0, auth_middleware_1
  *         description: Result not found
  */
 router.put('/:id/publish', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(types_1.UserRole.SUPER_ADMIN, types_1.UserRole.ASSOCIATION_ADMIN, types_1.UserRole.COMPETITION_MANAGER), (0, validation_middleware_1.validateUUID)('id'), resultsController.publishResult);
+router.patch('/:id/publish', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(types_1.UserRole.SUPER_ADMIN, types_1.UserRole.ASSOCIATION_ADMIN, types_1.UserRole.COMPETITION_MANAGER), (0, validation_middleware_1.validateUUID)('id'), resultsController.publishResult);
 exports.default = router;
 //# sourceMappingURL=results.routes.js.map

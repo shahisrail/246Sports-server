@@ -44,9 +44,15 @@ const submitResult = async (req, res) => {
             (0, responseHandler_1.errorResponse)(res, 'Unauthorized', 401, 'UNAUTHORIZED');
             return;
         }
-        const { fixture_id, home_score, away_score, goals, stats } = req.body;
+        const { fixture_id, home_score, away_score } = req.body;
+        const homeScore = Number(home_score);
+        const awayScore = Number(away_score);
+        if (!fixture_id || !Number.isFinite(homeScore) || !Number.isFinite(awayScore) || homeScore < 0 || awayScore < 0) {
+            (0, responseHandler_1.errorResponse)(res, 'Fixture and non-negative scores are required', 400, 'INVALID_RESULT_DATA');
+            return;
+        }
         // Check if fixture exists and get competition info
-        const fixtureResult = await client.query(`SELECT f.*, c.id as competition_id, c.points_win, c.points_draw, c.points_loss
+        const fixtureResult = await client.query(`SELECT f.*, c.id as competition_id
        FROM fixtures f
        LEFT JOIN competitions c ON f.competition_id = c.id
        WHERE f.id = $1 AND f.deleted_at IS NULL`, [fixture_id]);
@@ -62,46 +68,37 @@ const submitResult = async (req, res) => {
         if (existingResult.rows.length > 0) {
             // Update existing result
             const existingId = existingResult.rows[0].id;
-            result = await client.query(`UPDATE results SET home_score = $1, away_score = $2, status = $3, submitted_by = $4, updated_at = CURRENT_TIMESTAMP
+            if (existingResult.rows[0].status === types_1.ResultStatus.PUBLISHED) {
+                await client.query('ROLLBACK');
+                transactionStarted = false;
+                (0, responseHandler_1.errorResponse)(res, 'Published results cannot be overwritten. Create an admin correction workflow instead.', 400, 'RESULT_ALREADY_PUBLISHED');
+                return;
+            }
+            result = await client.query(`UPDATE results
+         SET home_score = $1,
+             away_score = $2,
+             status = $3,
+             submitted_by = $4,
+             confirmed_by = NULL,
+             confirmed_at = NULL,
+             published_by = NULL,
+             published_at = NULL,
+             updated_at = CURRENT_TIMESTAMP
          WHERE id = $5
-         RETURNING *`, [home_score, away_score, types_1.ResultStatus.SUBMITTED, req.user.userId, existingId]);
+         RETURNING *`, [homeScore, awayScore, types_1.ResultStatus.SUBMITTED, req.user.userId, existingId]);
         }
         else {
             // Create new result
             const resultId = (0, uuid_1.v4)();
             result = await client.query(`INSERT INTO results (id, fixture_id, home_score, away_score, status, submitted_by)
          VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING *`, [resultId, fixture_id, home_score, away_score, types_1.ResultStatus.SUBMITTED, req.user.userId]);
+         RETURNING *`, [resultId, fixture_id, homeScore, awayScore, types_1.ResultStatus.SUBMITTED, req.user.userId]);
         }
         // Update fixture status to FINISHED
         await client.query(`UPDATE fixtures SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, ['FINISHED', fixture_id]);
-        // Trigger standings recalculation for the competition
-        try {
-            const fixtureInfo = await client.query('SELECT competition_id FROM fixtures WHERE id = $1', [fixture_id]);
-            if (fixtureInfo.rows.length > 0) {
-                const competitionId = fixtureInfo.rows[0].competition_id;
-                // Recalculate standings
-                await recalculateCompetitionStandings(client, competitionId);
-            }
-        }
-        catch (standingsError) {
-            console.error('Failed to recalculate standings:', standingsError);
-            // Don't fail the result submission if standings calculation fails
-        }
-        // Store goals as JSON if provided
-        if (goals && (goals.home || goals.away)) {
-            const allGoals = [...(goals.home || []), ...(goals.away || [])];
-            if (allGoals.length > 0) {
-                await client.query(`UPDATE results SET goals = $1 WHERE id = $2`, [JSON.stringify(allGoals), result.rows[0].id]);
-            }
-        }
-        // Store match stats as JSON if provided
-        if (stats) {
-            await client.query(`UPDATE results SET match_stats = $1 WHERE id = $2`, [JSON.stringify(stats), result.rows[0].id]);
-        }
         // Log audit
         await client.query(`INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.CREATE, 'RESULT', result.rows[0].id, JSON.stringify({ fixture_id, home_score, away_score })]);
+       VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.CREATE, 'RESULT', result.rows[0].id, JSON.stringify({ fixture_id, home_score: homeScore, away_score: awayScore, status: 'SUBMITTED' })]);
         await client.query('COMMIT');
         transactionStarted = false;
         (0, responseHandler_1.successResponse)(res, result.rows[0], 'Result submitted successfully', 201);
@@ -164,7 +161,7 @@ const confirmResult = async (req, res) => {
         await client.query('BEGIN');
         transactionStarted = true;
         const updatedResult = await client.query(`UPDATE results
-       SET status = $1, confirmed_by = $2, updated_at = CURRENT_TIMESTAMP
+       SET status = $1, confirmed_by = $2, confirmed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
        WHERE id = $3
        RETURNING *`, [types_1.ResultStatus.CONFIRMED, req.user.userId, id]);
         // Log audit
@@ -236,12 +233,12 @@ const publishResult = async (req, res) => {
         await client.query('BEGIN');
         transactionStarted = true;
         // Update result status
-        await client.query(`UPDATE results
-       SET status = $1, published_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2`, [types_1.ResultStatus.PUBLISHED, id]);
-        // Update standings for both teams
-        await updateTeamStandings(client, result.home_team_id, result.competition_id, result, result.points_win, result.points_draw, result.points_loss);
-        await updateTeamStandings(client, result.away_team_id, result.competition_id, result, result.points_win, result.points_draw, result.points_loss);
+        const updatedResult = await client.query(`UPDATE results
+       SET status = $1, published_by = $2, published_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3
+       RETURNING *`, [types_1.ResultStatus.PUBLISHED, req.user.userId, id]);
+        // Rebuild standings from all published results so edits/re-publishes cannot double-count.
+        await recalculateCompetitionStandings(client, result.competition_id);
         // Update fixture status to FINISHED
         await client.query(`UPDATE fixtures SET status = $1 WHERE id = $2`, ['FINISHED', result.fixture_id]);
         // Log audit
@@ -249,7 +246,7 @@ const publishResult = async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6)`, [(0, uuid_1.v4)(), req.user.userId, types_2.AuditAction.PUBLISH, 'RESULT', id, JSON.stringify({ status: 'PUBLISHED', fixture_id: result.fixture_id })]);
         await client.query('COMMIT');
         transactionStarted = false;
-        (0, responseHandler_1.successResponse)(res, null, 'Result published and standings updated successfully');
+        (0, responseHandler_1.successResponse)(res, updatedResult.rows[0], 'Result published and standings updated successfully');
     }
     catch (error) {
         if (transactionStarted) {
@@ -334,33 +331,60 @@ const updateTeamStandings = async (client, teamId, competitionId, result, points
  */
 const getResults = async (req, res) => {
     try {
-        const { competition_id, status } = req.query;
+        const { page = 1, limit = 10, competition_id, competitionId, fixture_id, fixtureId, team_id, teamId, status, } = req.query;
+        const pageNumber = Number(page) || 1;
+        const pageLimit = Number(limit) || 10;
+        const offset = (pageNumber - 1) * pageLimit;
         let queryText = `
       SELECT
         r.*,
         f.date_time,
+        f.status as fixture_status,
+        f.competition_id,
+        f.home_team_id,
+        f.away_team_id,
         c.name as competition_name,
+        c.sport as competition_sport,
         ht.name as home_team_name,
-        at.name as away_team_name
+        ht.logo as home_team_logo,
+        at.name as away_team_name,
+        at.logo as away_team_logo,
+        v.name as venue_name
       FROM results r
       LEFT JOIN fixtures f ON r.fixture_id = f.id
       LEFT JOIN competitions c ON f.competition_id = c.id
       LEFT JOIN teams ht ON f.home_team_id = ht.id
       LEFT JOIN teams at ON f.away_team_id = at.id
+      LEFT JOIN venues v ON f.venue_id = v.id
       WHERE 1=1
     `;
         let params = [];
-        if (competition_id) {
+        const resolvedCompetitionId = competition_id || competitionId;
+        const resolvedFixtureId = fixture_id || fixtureId;
+        const resolvedTeamId = team_id || teamId;
+        if (resolvedCompetitionId) {
             queryText += ` AND f.competition_id = $${params.length + 1}`;
-            params.push(competition_id);
+            params.push(resolvedCompetitionId);
+        }
+        if (resolvedFixtureId) {
+            queryText += ` AND r.fixture_id = $${params.length + 1}`;
+            params.push(resolvedFixtureId);
+        }
+        if (resolvedTeamId) {
+            queryText += ` AND (f.home_team_id = $${params.length + 1} OR f.away_team_id = $${params.length + 1})`;
+            params.push(resolvedTeamId);
         }
         if (status) {
             queryText += ` AND r.status = $${params.length + 1}`;
             params.push(status);
         }
-        queryText += ` ORDER BY r.created_at DESC`;
+        const countQuery = `SELECT COUNT(*) FROM (${queryText}) count_scope`;
+        const countResult = await (0, database_1.query)(countQuery, params);
+        const total = parseInt(countResult.rows[0].count, 10);
+        queryText += ` ORDER BY r.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+        params.push(pageLimit, offset);
         const result = await (0, database_1.query)(queryText, params);
-        (0, responseHandler_1.successResponse)(res, result.rows, 'Results retrieved successfully');
+        (0, responseHandler_1.paginatedResponse)(res, result.rows, pageNumber, pageLimit, total, 'Results retrieved successfully');
     }
     catch (error) {
         console.error('Get results error:', error);
@@ -409,7 +433,7 @@ const getResultByFixtureId = async (req, res) => {
 exports.getResultByFixtureId = getResultByFixtureId;
 /**
  * Helper function to recalculate standings for a competition
- * Processes all published and confirmed results
+ * Processes all published results
  */
 async function recalculateCompetitionStandings(client, competitionId) {
     try {
@@ -420,22 +444,27 @@ async function recalculateCompetitionStandings(client, competitionId) {
             return;
         }
         const competition = competitionResult.rows[0];
-        // Get all results for this competition (both PUBLISHED and CONFIRMED)
+        // Get all public results for this competition. Confirmed results are reviewed
+        // but should not affect public standings until explicitly published.
         const resultsResult = await client.query(`SELECT r.*, f.home_team_id, f.away_team_id
        FROM results r
        LEFT JOIN fixtures f ON r.fixture_id = f.id
-       WHERE f.competition_id = $1 AND r.status IN ('PUBLISHED', 'CONFIRMED')
+       WHERE f.competition_id = $1 AND r.status = 'PUBLISHED'
        ORDER BY r.created_at ASC`, [competitionId]);
         // Delete existing standings
         await client.query('DELETE FROM standings WHERE competition_id = $1', [competitionId]);
-        // Get all teams in competition
-        const teamsResult = await client.query(`SELECT DISTINCT t.id
-       FROM teams t
-       WHERE t.competition_id = $1`, [competitionId]);
+        // Get all teams that appear in fixtures for this competition. Imported data
+        // does not attach teams directly to competitions.
+        const teamsResult = await client.query(`SELECT DISTINCT team_id AS id
+       FROM (
+         SELECT home_team_id AS team_id FROM fixtures WHERE competition_id = $1 AND home_team_id IS NOT NULL
+         UNION
+         SELECT away_team_id AS team_id FROM fixtures WHERE competition_id = $1 AND away_team_id IS NOT NULL
+       ) teams`, [competitionId]);
         // Initialize standings for all teams
         for (const team of teamsResult.rows) {
             await client.query(`INSERT INTO standings (id, competition_id, team_id, played, won, drawn, lost, goals_for, goals_against, goal_difference, points)
-         VALUES ($1, $2, $3, 0, 0, 0, 0, 0, 0, 0, 0)`, [require('uuid').v4(), String(competitionId), team.id]);
+         VALUES ($1, $2, $3, 0, 0, 0, 0, 0, 0, 0, 0)`, [(0, uuid_1.v4)(), String(competitionId), team.id]);
         }
         // Process each result
         for (const result of resultsResult.rows) {

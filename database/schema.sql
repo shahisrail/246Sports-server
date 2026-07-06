@@ -335,7 +335,7 @@ CREATE TABLE IF NOT EXISTS media (
     entity_type VARCHAR(100),
     entity_id UUID,
     uploaded_by UUID REFERENCES users(id),
-    metadata JSONB,
+    metadata JSONB,a
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
