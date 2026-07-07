@@ -28,6 +28,7 @@ import invitationsRoutes from '../modules/invitations/invitations.routes';
 import emailSubscriptionsRoutes from '../modules/email-subscriptions/email-subscriptions.routes';
 import videosRoutes from '../modules/videos/videos.routes';
 import cmsRoutes from '../modules/cms/cms.routes';
+import bulkImportRoutes from '../modules/bulk-import/bulk-import.routes';
 
 const router = express.Router();
 
@@ -193,5 +194,6 @@ router.use('/email-subscriptions', emailSubscriptionsRoutes);
 router.use('/invitations', invitationsRoutes);
 router.use('/videos', videosRoutes);
 router.use('/cms', cmsRoutes);
+router.use('/bulk-import', bulkImportRoutes);
 
 export default router;
