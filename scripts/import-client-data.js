@@ -7,7 +7,7 @@ const { Pool } = require("pg");
 
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
-const root = path.resolve(__dirname, "..", "..");
+const root = path.resolve(__dirname, "..");
 const outputDir = path.join(root, "tmp", "client-data-import");
 const extractPath = path.join(outputDir, "client-data-extract.json");
 const apply = process.argv.includes("--apply");

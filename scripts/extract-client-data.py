@@ -19,14 +19,15 @@ import pdfplumber
 from openpyxl import load_workbook
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = ROOT / "tmp" / "client-data-import"
+CLIENT_DATA_DIR = ROOT / "client-data"
 SOURCES = {
-    "federations": ROOT / "National Sporting Federations- MSCE.xlsx",
-    "sailing_xls": ROOT / "Sailing Calendar 2026.xls",
+    "federations": CLIENT_DATA_DIR / "National Sporting Federations- MSCE.xlsx",
+    "sailing_xls": CLIENT_DATA_DIR / "Sailing Calendar 2026.xls",
     "sailing_xlsx": OUTPUT_DIR / "Sailing Calendar 2026.xlsx",
-    "bca_dir": ROOT / "BCA__Calendar_of_events_&_fixtures",
-    "round_pdf": ROOT / "2025 -2026 round 2 final by iScanner.pdf",
+    "bca_dir": CLIENT_DATA_DIR / "BCA__Calendar_of_events_&_fixtures",
+    "round_pdf": CLIENT_DATA_DIR / "2025 -2026 round 2 final by iScanner.pdf",
 }
 
 MONTHS = {
