@@ -38,6 +38,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const multer_1 = __importDefault(require("multer"));
+const jwt_1 = require("../../utils/jwt");
 const auth_middleware_1 = require("../../middleware/auth.middleware");
 const validation_middleware_1 = require("../../middleware/validation.middleware");
 const types_1 = require("../../types");
@@ -47,8 +48,20 @@ const upload = (0, multer_1.default)({
     storage: multer_1.default.memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024 },
 });
-router.get('/', latestUpdatesController.getLatestUpdates);
-router.get('/:id', (0, validation_middleware_1.validateUUID)('id'), latestUpdatesController.getLatestUpdateById);
+const optionalAuthenticate = (req, _res, next) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+        try {
+            req.user = (0, jwt_1.verifyToken)(authHeader.substring(7));
+        }
+        catch {
+            req.user = undefined;
+        }
+    }
+    next();
+};
+router.get('/', optionalAuthenticate, latestUpdatesController.getLatestUpdates);
+router.get('/:id', optionalAuthenticate, (0, validation_middleware_1.validateUUID)('id'), latestUpdatesController.getLatestUpdateById);
 router.post('/import', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(types_1.UserRole.SUPER_ADMIN, types_1.UserRole.ASSOCIATION_ADMIN), upload.single('file'), latestUpdatesController.importLatestUpdates);
 router.put('/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(types_1.UserRole.SUPER_ADMIN, types_1.UserRole.ASSOCIATION_ADMIN), (0, validation_middleware_1.validateUUID)('id'), latestUpdatesController.updateLatestUpdate);
 router.delete('/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(types_1.UserRole.SUPER_ADMIN, types_1.UserRole.ASSOCIATION_ADMIN), (0, validation_middleware_1.validateUUID)('id'), latestUpdatesController.deleteLatestUpdate);

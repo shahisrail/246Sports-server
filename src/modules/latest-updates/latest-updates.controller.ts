@@ -71,8 +71,9 @@ export const getLatestUpdates = async (req: AuthRequest, res: Response): Promise
       search,
     } = req.query;
     const params: any[] = [];
-    const isAdmin = Boolean(req.user && [UserRole.SUPER_ADMIN, UserRole.ASSOCIATION_ADMIN].includes(req.user.role));
-    const selectedStatus = status || (isAdmin ? undefined : 'PUBLISHED');
+    const userRole = String(req.user?.role || '').toUpperCase();
+    const isAdmin = [UserRole.SUPER_ADMIN, UserRole.ASSOCIATION_ADMIN].includes(userRole as UserRole);
+    const selectedStatus = isAdmin ? status : 'PUBLISHED';
 
     let sql = `
       SELECT *, COUNT(*) OVER() AS total_count
@@ -133,8 +134,10 @@ export const getLatestUpdates = async (req: AuthRequest, res: Response): Promise
 
 export const getLatestUpdateById = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const userRole = String(req.user?.role || '').toUpperCase();
+    const isAdmin = [UserRole.SUPER_ADMIN, UserRole.ASSOCIATION_ADMIN].includes(userRole as UserRole);
     const result = await query(
-      `SELECT * FROM latest_updates WHERE id = $1 AND deleted_at IS NULL`,
+      `SELECT * FROM latest_updates WHERE id = $1 AND deleted_at IS NULL ${isAdmin ? '' : "AND status = 'PUBLISHED'"}`,
       [req.params.id]
     );
     if (result.rows.length === 0) {

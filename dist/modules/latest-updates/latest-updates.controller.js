@@ -47,8 +47,9 @@ const getLatestUpdates = async (req, res) => {
     try {
         const { page = 1, limit = 12, status, sport, event_type, period, date_from, date_to, search, } = req.query;
         const params = [];
-        const isAdmin = Boolean(req.user && [types_1.UserRole.SUPER_ADMIN, types_1.UserRole.ASSOCIATION_ADMIN].includes(req.user.role));
-        const selectedStatus = status || (isAdmin ? undefined : 'PUBLISHED');
+        const userRole = String(req.user?.role || '').toUpperCase();
+        const isAdmin = [types_1.UserRole.SUPER_ADMIN, types_1.UserRole.ASSOCIATION_ADMIN].includes(userRole);
+        const selectedStatus = isAdmin ? status : 'PUBLISHED';
         let sql = `
       SELECT *, COUNT(*) OVER() AS total_count
       FROM latest_updates
@@ -106,7 +107,9 @@ const getLatestUpdates = async (req, res) => {
 exports.getLatestUpdates = getLatestUpdates;
 const getLatestUpdateById = async (req, res) => {
     try {
-        const result = await (0, database_1.query)(`SELECT * FROM latest_updates WHERE id = $1 AND deleted_at IS NULL`, [req.params.id]);
+        const userRole = String(req.user?.role || '').toUpperCase();
+        const isAdmin = [types_1.UserRole.SUPER_ADMIN, types_1.UserRole.ASSOCIATION_ADMIN].includes(userRole);
+        const result = await (0, database_1.query)(`SELECT * FROM latest_updates WHERE id = $1 AND deleted_at IS NULL ${isAdmin ? '' : "AND status = 'PUBLISHED'"}`, [req.params.id]);
         if (result.rows.length === 0) {
             (0, responseHandler_1.errorResponse)(res, 'Latest update not found', 404, 'LATEST_UPDATE_NOT_FOUND');
             return;
