@@ -32,6 +32,7 @@ const email_subscriptions_routes_1 = __importDefault(require("../modules/email-s
 const videos_routes_1 = __importDefault(require("../modules/videos/videos.routes"));
 const cms_routes_1 = __importDefault(require("../modules/cms/cms.routes"));
 const bulk_import_routes_1 = __importDefault(require("../modules/bulk-import/bulk-import.routes"));
+const latest_updates_routes_1 = __importDefault(require("../modules/latest-updates/latest-updates.routes"));
 const router = express_1.default.Router();
 /**
  * @swagger
@@ -191,5 +192,6 @@ router.use('/invitations', invitations_routes_1.default);
 router.use('/videos', videos_routes_1.default);
 router.use('/cms', cms_routes_1.default);
 router.use('/bulk-import', bulk_import_routes_1.default);
+router.use('/latest-updates', latest_updates_routes_1.default);
 exports.default = router;
 //# sourceMappingURL=v1.routes.js.map

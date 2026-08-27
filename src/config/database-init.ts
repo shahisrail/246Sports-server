@@ -216,6 +216,29 @@ export async function ensureSchemaUpdates(pool: Pool): Promise<void> {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         deleted_at TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS latest_updates (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        sport VARCHAR(100),
+        event_type VARCHAR(50) DEFAULT 'UPDATE',
+        start_date DATE NOT NULL,
+        end_date DATE,
+        time VARCHAR(50),
+        venue VARCHAR(255),
+        location VARCHAR(255),
+        home_team VARCHAR(255),
+        away_team VARCHAR(255),
+        source_file VARCHAR(255),
+        source_type VARCHAR(50),
+        confidence_score NUMERIC(4, 2) DEFAULT 0,
+        status VARCHAR(20) DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'ARCHIVED')),
+        published_at TIMESTAMP,
+        created_by UUID REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP
       )`
     ];
 
@@ -378,6 +401,21 @@ export async function ensureSchemaUpdates(pool: Pool): Promise<void> {
         await pool.query(indexQuery);
       } catch (err: any) {
         console.warn(`⚠️ Warning creating videos index: ${err.message}`);
+      }
+    }
+
+    const latestUpdateIndexes = [
+      'CREATE INDEX IF NOT EXISTS idx_latest_updates_date ON latest_updates(start_date DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_latest_updates_status ON latest_updates(status, deleted_at)',
+      'CREATE INDEX IF NOT EXISTS idx_latest_updates_sport ON latest_updates(sport)',
+      'CREATE INDEX IF NOT EXISTS idx_latest_updates_type ON latest_updates(event_type)'
+    ];
+
+    for (const indexQuery of latestUpdateIndexes) {
+      try {
+        await pool.query(indexQuery);
+      } catch (err: any) {
+        console.warn(`⚠️ Warning creating latest updates index: ${err.message}`);
       }
     }
 
