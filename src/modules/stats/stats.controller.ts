@@ -94,12 +94,12 @@ export const getMonthlyActivity = async (_req: AuthRequest, res: Response): Prom
       ),
       fixtures AS (
         SELECT
-          DATE_TRUNC('month', scheduled_date) AS month,
+          DATE_TRUNC('month', date_time) AS month,
           COUNT(*) AS count
         FROM fixtures
-        WHERE scheduled_date >= CURRENT_DATE - INTERVAL '6 months'
+        WHERE date_time >= CURRENT_DATE - INTERVAL '6 months'
           AND deleted_at IS NULL
-        GROUP BY DATE_TRUNC('month', scheduled_date)
+        GROUP BY DATE_TRUNC('month', date_time)
       ),
       news AS (
         SELECT

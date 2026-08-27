@@ -220,11 +220,22 @@ function runExtractor(filePath, originalName) {
     const scriptPath = path_1.default.resolve(__dirname, '../../../scripts/extract-latest-updates.py');
     return new Promise((resolve, reject) => {
         const child = (0, child_process_1.spawn)('python3', [scriptPath, filePath, originalName], { cwd: path_1.default.resolve(__dirname, '../../..') });
+        const timeout = setTimeout(() => {
+            child.kill('SIGTERM');
+            reject(new Error('Document extraction timed out. Please try a smaller file.'));
+        }, 60000);
         let stdout = '';
         let stderr = '';
         child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
         child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+        child.on('error', (error) => {
+            clearTimeout(timeout);
+            reject(new Error(error?.code === 'ENOENT'
+                ? 'Document extraction requires Python 3 on the server.'
+                : error?.message || 'Document extraction failed to start'));
+        });
         child.on('close', (code) => {
+            clearTimeout(timeout);
             try {
                 const parsed = JSON.parse(stdout || '{}');
                 if (code !== 0 || parsed.error)

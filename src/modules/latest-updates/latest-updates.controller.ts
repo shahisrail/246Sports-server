@@ -266,11 +266,22 @@ function runExtractor(filePath: string, originalName: string): Promise<any> {
   const scriptPath = path.resolve(__dirname, '../../../scripts/extract-latest-updates.py');
   return new Promise((resolve, reject) => {
     const child = spawn('python3', [scriptPath, filePath, originalName], { cwd: path.resolve(__dirname, '../../..') });
+    const timeout = setTimeout(() => {
+      child.kill('SIGTERM');
+      reject(new Error('Document extraction timed out. Please try a smaller file.'));
+    }, 60000);
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
     child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    child.on('error', (error: any) => {
+      clearTimeout(timeout);
+      reject(new Error(error?.code === 'ENOENT'
+        ? 'Document extraction requires Python 3 on the server.'
+        : error?.message || 'Document extraction failed to start'));
+    });
     child.on('close', (code) => {
+      clearTimeout(timeout);
       try {
         const parsed = JSON.parse(stdout || '{}');
         if (code !== 0 || parsed.error) reject(new Error(parsed.error || stderr || 'Document extraction failed'));
