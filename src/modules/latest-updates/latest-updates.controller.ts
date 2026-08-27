@@ -1,8 +1,6 @@
 import { Response } from 'express';
-import { spawn } from 'child_process';
-import fs from 'fs/promises';
-import os from 'os';
 import path from 'path';
+import zlib from 'zlib';
 import { v4 as uuidv4 } from 'uuid';
 import { pool, query } from '../../config/database';
 import { AuthRequest, UserRole } from '../../types';
@@ -25,6 +23,39 @@ type ExtractedUpdate = {
 };
 
 const allowedStatuses = ['DRAFT', 'PUBLISHED', 'ARCHIVED'];
+const months: Record<string, number> = {
+  jan: 1, january: 1,
+  feb: 2, february: 2,
+  mar: 3, march: 3,
+  apr: 4, april: 4,
+  may: 5,
+  jun: 6, june: 6,
+  jul: 7, july: 7,
+  aug: 8, august: 8,
+  sep: 9, sept: 9, september: 9,
+  oct: 10, october: 10,
+  nov: 11, november: 11,
+  dec: 12, december: 12,
+};
+
+const sportKeywords: Array<[string, string[]]> = [
+  ['Cricket', ['cricket', 'bca', 'cpl', 'test', 'wicket', 'tridents', 'knight riders', 'falcons', 'amazon warriors']],
+  ['Football', ['football', 'bfa', 'premier league', 'fc', 'rangers']],
+  ['Netball', ['netball']],
+  ['Cycling', ['cycling', 'mountain bike']],
+  ['Horse Racing', ['garrison savannah', 'horse', 'btc racing']],
+  ['Motorsport', ['grand prix', 'motor', 'racing calendar', 'bushy park', 'brc']],
+  ['Chess', ['chess']],
+  ['Hockey', ['hockey']],
+  ['Athletics', ['diamond league', 'marathon', 'athletics']],
+  ['Tennis', ['tennis', 'u.s open', 'us open']],
+  ['Rowing', ['rowing']],
+  ['Gymnastics', ['gymnastics']],
+  ['Squash', ['squash']],
+  ['Basketball', ['fiba', 'basketball']],
+  ['Bodybuilding', ['bodybuilding']],
+  ['Multi-Sport', ['multi-sports', 'mediterranean games']],
+];
 
 export const getLatestUpdates = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -130,11 +161,8 @@ export const importLatestUpdates = async (req: AuthRequest, res: Response): Prom
     return;
   }
 
-  const tempPath = path.join(os.tmpdir(), `${uuidv4()}-${safeFileName(req.file.originalname)}`);
-
   try {
-    await fs.writeFile(tempPath, req.file.buffer);
-    const extracted = await runExtractor(tempPath, req.file.originalname);
+    const extracted = extractUpdatesFromUpload(req.file.buffer, req.file.originalname);
     const updates = Array.isArray(extracted.updates) ? extracted.updates as ExtractedUpdate[] : [];
 
     if (updates.length === 0) {
@@ -192,9 +220,8 @@ export const importLatestUpdates = async (req: AuthRequest, res: Response): Prom
     }
   } catch (error: any) {
     console.error('Import latest updates error:', error);
-    errorResponse(res, error?.message || 'Failed to import latest updates', 500, 'LATEST_UPDATES_IMPORT_FAILED');
-  } finally {
-    await fs.unlink(tempPath).catch(() => undefined);
+    const statusCode = error?.code === 'UNSUPPORTED_FILE_TYPE' ? 400 : 500;
+    errorResponse(res, error?.message || 'Failed to import latest updates', statusCode, 'LATEST_UPDATES_IMPORT_FAILED');
   }
 };
 
@@ -262,41 +289,6 @@ export const deleteLatestUpdate = async (req: AuthRequest, res: Response): Promi
   }
 };
 
-function runExtractor(filePath: string, originalName: string): Promise<any> {
-  const scriptPath = path.resolve(__dirname, '../../../scripts/extract-latest-updates.py');
-  return new Promise((resolve, reject) => {
-    const child = spawn('python3', [scriptPath, filePath, originalName], { cwd: path.resolve(__dirname, '../../..') });
-    const timeout = setTimeout(() => {
-      child.kill('SIGTERM');
-      reject(new Error('Document extraction timed out. Please try a smaller file.'));
-    }, 60000);
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
-    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
-    child.on('error', (error: any) => {
-      clearTimeout(timeout);
-      reject(new Error(error?.code === 'ENOENT'
-        ? 'Document extraction requires Python 3 on the server.'
-        : error?.message || 'Document extraction failed to start'));
-    });
-    child.on('close', (code) => {
-      clearTimeout(timeout);
-      try {
-        const parsed = JSON.parse(stdout || '{}');
-        if (code !== 0 || parsed.error) reject(new Error(parsed.error || stderr || 'Document extraction failed'));
-        else resolve(parsed);
-      } catch {
-        reject(new Error(stderr || 'Document extraction failed'));
-      }
-    });
-  });
-}
-
-function safeFileName(name: string) {
-  return String(name || 'upload').replace(/[^a-zA-Z0-9._-]+/g, '-');
-}
-
 function fileSourceType(name: string) {
   const ext = path.extname(name).toLowerCase();
   if (ext === '.docx') return 'DOCX';
@@ -309,4 +301,187 @@ function fileSourceType(name: string) {
 function normalizeType(value: any) {
   const normalized = String(value || 'UPDATE').toUpperCase().replace(/[\s-]+/g, '_');
   return normalized.slice(0, 50);
+}
+
+function extractUpdatesFromUpload(buffer: Buffer, originalName: string) {
+  const ext = path.extname(originalName).toLowerCase();
+  const text = extractUploadText(buffer, ext);
+  return {
+    text_length: text.length,
+    updates: parseDatedUpdates(text),
+  };
+}
+
+function extractUploadText(buffer: Buffer, ext: string): string {
+  if (ext === '.docx') return extractDocxText(buffer);
+  if (ext === '.txt' || ext === '.csv') return cleanText(buffer.toString('utf8'));
+  if (ext === '.pdf') {
+    const error: any = new Error('PDF import needs server PDF parsing support. Please upload DOCX, TXT, or CSV for now.');
+    error.code = 'UNSUPPORTED_FILE_TYPE';
+    throw error;
+  }
+  const error: any = new Error('Only .docx, .pdf, .txt, and .csv files are supported');
+  error.code = 'UNSUPPORTED_FILE_TYPE';
+  throw error;
+}
+
+function extractDocxText(buffer: Buffer): string {
+  const documentXml = readZipEntry(buffer, 'word/document.xml');
+  if (!documentXml) {
+    throw new Error('Could not read the DOCX document body.');
+  }
+
+  const xml = documentXml
+    .replace(/<\/w:p>|<\/w:tr>/g, '\n')
+    .replace(/<[^>]+>/g, ' ');
+
+  return cleanText(decodeXmlEntities(xml));
+}
+
+function readZipEntry(zip: Buffer, targetName: string): string | null {
+  const eocdOffset = findEndOfCentralDirectory(zip);
+  if (eocdOffset < 0) return null;
+
+  const centralDirectorySize = zip.readUInt32LE(eocdOffset + 12);
+  const centralDirectoryOffset = zip.readUInt32LE(eocdOffset + 16);
+  let offset = centralDirectoryOffset;
+  const endOffset = centralDirectoryOffset + centralDirectorySize;
+
+  while (offset + 46 <= endOffset && offset + 46 <= zip.length) {
+    if (zip.readUInt32LE(offset) !== 0x02014b50) break;
+
+    const compressionMethod = zip.readUInt16LE(offset + 10);
+    const compressedSize = zip.readUInt32LE(offset + 20);
+    const fileNameLength = zip.readUInt16LE(offset + 28);
+    const extraLength = zip.readUInt16LE(offset + 30);
+    const commentLength = zip.readUInt16LE(offset + 32);
+    const localHeaderOffset = zip.readUInt32LE(offset + 42);
+    const fileName = zip.toString('utf8', offset + 46, offset + 46 + fileNameLength);
+
+    if (fileName === targetName) {
+      const localNameLength = zip.readUInt16LE(localHeaderOffset + 26);
+      const localExtraLength = zip.readUInt16LE(localHeaderOffset + 28);
+      const dataStart = localHeaderOffset + 30 + localNameLength + localExtraLength;
+      const data = zip.subarray(dataStart, dataStart + compressedSize);
+      if (compressionMethod === 0) return data.toString('utf8');
+      if (compressionMethod === 8) return zlib.inflateRawSync(data).toString('utf8');
+      throw new Error('Unsupported DOCX compression method.');
+    }
+
+    offset += 46 + fileNameLength + extraLength + commentLength;
+  }
+  return null;
+}
+
+function findEndOfCentralDirectory(zip: Buffer): number {
+  const signature = 0x06054b50;
+  const minOffset = Math.max(0, zip.length - 0xffff - 22);
+  for (let offset = zip.length - 22; offset >= minOffset; offset -= 1) {
+    if (zip.readUInt32LE(offset) === signature) return offset;
+  }
+  return -1;
+}
+
+function parseDatedUpdates(text: string): ExtractedUpdate[] {
+  const year = inferYear(text);
+  const headingPattern = /\b((?:Sat(?:urday)?|Sun(?:day)?|Mon(?:day)?|Tue(?:s|sday)?|Tues(?:day)?|Wed(?:nesday)?|Thu(?:rs|rsday)?|Thursday|Fri(?:day)?))\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?\.?/gi;
+  const matches = Array.from(text.matchAll(headingPattern));
+  const updates: ExtractedUpdate[] = [];
+
+  matches.forEach((match, index) => {
+    const start = (match.index || 0) + match[0].length;
+    const end = index + 1 < matches.length ? matches[index + 1].index || text.length : text.length;
+    const eventDate = formatDate(year, match[2], match[3]);
+    const segment = text.slice(start, end);
+
+    splitItems(segment).forEach((item) => {
+      const title = cleanText(item.replace(/^\d{1,2}(?::\d{2})?\s*(?:am|pm)\s*/i, ''));
+      if (!title || /^,?\s*20\d{2}$/.test(title)) return;
+      const [homeTeam, awayTeam] = extractTeams(title);
+      const venue = extractVenue(title);
+
+      updates.push({
+        title: title.slice(0, 255),
+        description: item,
+        sport: inferSport(title),
+        event_type: inferType(title),
+        start_date: eventDate,
+        end_date: eventDate,
+        time: extractTime(item),
+        venue,
+        location: venue,
+        home_team: homeTeam,
+        away_team: awayTeam,
+        confidence_score: homeTeam || extractTime(item) || venue ? 0.86 : 0.72,
+      });
+    });
+  });
+
+  return updates;
+}
+
+function splitItems(segment: string): string[] {
+  const normalized = segment.replace(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm))\s*[.]+\s*/gi, '$1 ');
+  return normalized
+    .split(/\s*(?:\.{2,}|\.\s+|;\s+|\n+)\s*/)
+    .map(cleanText)
+    .filter((item) => item.length > 3);
+}
+
+function cleanText(value: string): string {
+  return decodeXmlEntities(value || '')
+    .replace(/\u2026/g, '...')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([.,;:])/g, '$1')
+    .trim()
+    .replace(/^[.\s]+|[.\s]+$/g, '');
+}
+
+function decodeXmlEntities(value: string): string {
+  return value
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
+function inferYear(text: string): number {
+  const match = text.match(/\b(20\d{2})\b/);
+  return match ? Number(match[1]) : new Date().getFullYear();
+}
+
+function formatDate(year: number, monthRaw: string, dayRaw: string): string {
+  const month = months[monthRaw.toLowerCase().replace(/\.$/, '')];
+  return `${year}-${String(month).padStart(2, '0')}-${String(Number(dayRaw)).padStart(2, '0')}`;
+}
+
+function inferSport(item: string): string {
+  const lower = item.toLowerCase();
+  const match = sportKeywords.find(([, keywords]) => keywords.some((keyword) => lower.includes(keyword)));
+  return match ? match[0] : 'General Sports';
+}
+
+function inferType(item: string): string {
+  const lower = item.toLowerCase();
+  if (/[\w'& .-]+\s+v(?:s|\.)?\s+[\w'& .-]+/i.test(item)) return 'FIXTURE';
+  if (['championship', 'tournament', 'cup', 'league', 'final', 'semi-final', 'qualifier'].some((word) => lower.includes(word))) return 'COMPETITION';
+  if (['camp', 'festival'].some((word) => lower.includes(word))) return 'EVENT';
+  if (['grand prix', 'racing', 'race meet'].some((word) => lower.includes(word))) return 'RACING';
+  return 'UPDATE';
+}
+
+function extractTime(item: string): string {
+  const match = item.match(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm))\b/i);
+  return match ? match[1].replace(/\s+/g, '').toLowerCase() : '';
+}
+
+function extractVenue(item: string): string {
+  const match = item.match(/\bat\s+([^.;]+)$/i) || item.match(/\bat\s+([^.;,]+)/i);
+  return match ? cleanText(match[1]) : '';
+}
+
+function extractTeams(item: string): [string, string] {
+  const match = item.match(/(.+?)\s+v(?:s|\.)?\s+(.+?)(?:\s+at\s+|$)/i);
+  return match ? [cleanText(match[1]), cleanText(match[2])] : ['', ''];
 }
