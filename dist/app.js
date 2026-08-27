@@ -19,9 +19,37 @@ dotenv_1.default.config();
 const app = (0, express_1.default)();
 // Trust proxy (Coolify / reverse proxy)
 app.set("trust proxy", 1);
+const defaultCorsOrigins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:5173",
+    "https://246sports.com",
+    "https://www.246sports.com",
+];
+const configuredCorsOrigins = (process.env.CORS_ORIGIN || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+const allowedCorsOrigins = Array.from(new Set([...defaultCorsOrigins, ...configuredCorsOrigins]));
+const isCorsOriginAllowed = (origin) => {
+    if (!origin)
+        return true;
+    return allowedCorsOrigins.includes("*") || allowedCorsOrigins.includes(origin);
+};
+const getCorsResponseOrigin = (origin) => {
+    if (origin && isCorsOriginAllowed(origin))
+        return origin;
+    if (allowedCorsOrigins.includes("*"))
+        return origin || "*";
+    return allowedCorsOrigins[0];
+};
 // CORS headers (preflight)
 app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", process.env.CORS_ORIGIN || "*");
+    const origin = req.headers.origin;
+    if (isCorsOriginAllowed(origin)) {
+        res.header("Access-Control-Allow-Origin", getCorsResponseOrigin(origin));
+    }
+    res.header("Vary", "Origin");
     res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
     res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Tenant-ID");
     res.header("Access-Control-Expose-Headers", "X-Total-Count, X-Page, X-Limit");
@@ -39,7 +67,13 @@ app.use((0, helmet_1.default)({
 }));
 // CORS
 app.use((0, cors_1.default)({
-    origin: process.env.CORS_ORIGIN || "*",
+    origin: (origin, callback) => {
+        if (isCorsOriginAllowed(origin)) {
+            callback(null, getCorsResponseOrigin(origin));
+            return;
+        }
+        callback(new Error(`CORS origin not allowed: ${origin}`));
+    },
     credentials: true,
 }));
 // Logger
