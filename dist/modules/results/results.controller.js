@@ -331,7 +331,7 @@ const updateTeamStandings = async (client, teamId, competitionId, result, points
  */
 const getResults = async (req, res) => {
     try {
-        const { page = 1, limit = 10, competition_id, competitionId, fixture_id, fixtureId, team_id, teamId, status, } = req.query;
+        const { page = 1, limit = 10, competition_id, competitionId, fixture_id, fixtureId, team_id, teamId, status, date_from, date_to, } = req.query;
         const pageNumber = Number(page) || 1;
         const pageLimit = Number(limit) || 10;
         const offset = (pageNumber - 1) * pageLimit;
@@ -377,6 +377,14 @@ const getResults = async (req, res) => {
         if (status) {
             queryText += ` AND r.status = $${params.length + 1}`;
             params.push(status);
+        }
+        if (date_from) {
+            queryText += ` AND f.date_time >= $${params.length + 1}`;
+            params.push(date_from);
+        }
+        if (date_to) {
+            queryText += ` AND f.date_time <= $${params.length + 1}`;
+            params.push(date_to);
         }
         const countQuery = `SELECT COUNT(*) FROM (${queryText}) count_scope`;
         const countResult = await (0, database_1.query)(countQuery, params);
