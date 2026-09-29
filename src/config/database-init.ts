@@ -96,6 +96,8 @@ export async function initializeDatabase(pool: Pool): Promise<void> {
     const schema = fs.readFileSync(schemaPath, "utf8");
 
     await pool.query(schema);
+    // Fresh databases need the same incremental tables/columns as existing ones.
+    await ensureSchemaUpdates(pool);
 
     console.log("✅ Database tables created successfully!");
 

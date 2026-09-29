@@ -130,6 +130,8 @@ async function initializeDatabase(pool) {
         const schemaPath = path_1.default.join(__dirname, "../../database/schema.sql");
         const schema = fs_1.default.readFileSync(schemaPath, "utf8");
         await pool.query(schema);
+        // Fresh databases need the same incremental tables/columns as existing ones.
+        await ensureSchemaUpdates(pool);
         console.log("✅ Database tables created successfully!");
         // Verify tables were created
         const result = await pool.query(`

@@ -8,6 +8,39 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- CORE TABLES
 -- ============================================
 
+-- Sports table
+CREATE TABLE IF NOT EXISTS sports (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(100) NOT NULL UNIQUE,
+    slug VARCHAR(100) NOT NULL UNIQUE,
+    category VARCHAR(100),
+    icon TEXT,
+    description TEXT,
+    is_popular BOOLEAN DEFAULT false,
+    is_active BOOLEAN DEFAULT true,
+    display_order INTEGER DEFAULT 0,
+    metadata JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP
+);
+
+-- Sport positions table
+CREATE TABLE IF NOT EXISTS sport_positions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    sport_id UUID NOT NULL REFERENCES sports(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    abbreviation VARCHAR(20),
+    description TEXT,
+    display_order INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP,
+    UNIQUE(sport_id, name)
+);
+
+
 -- Users table
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -335,7 +368,7 @@ CREATE TABLE IF NOT EXISTS media (
     entity_type VARCHAR(100),
     entity_id UUID,
     uploaded_by UUID REFERENCES users(id),
-    metadata JSONB,a
+    metadata JSONB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -432,38 +465,6 @@ CREATE TABLE IF NOT EXISTS user_invitations (
     accepted_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Sports table
-CREATE TABLE IF NOT EXISTS sports (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(100) NOT NULL UNIQUE,
-    slug VARCHAR(100) NOT NULL UNIQUE,
-    category VARCHAR(100),
-    icon TEXT,
-    description TEXT,
-    is_popular BOOLEAN DEFAULT false,
-    is_active BOOLEAN DEFAULT true,
-    display_order INTEGER DEFAULT 0,
-    metadata JSONB,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP
-);
-
--- Sport positions table
-CREATE TABLE IF NOT EXISTS sport_positions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    sport_id UUID NOT NULL REFERENCES sports(id) ON DELETE CASCADE,
-    name VARCHAR(100) NOT NULL,
-    abbreviation VARCHAR(20),
-    description TEXT,
-    display_order INTEGER DEFAULT 0,
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP,
-    UNIQUE(sport_id, name)
 );
 
 -- Background jobs table
