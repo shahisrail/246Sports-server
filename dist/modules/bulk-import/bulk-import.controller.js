@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.uploadCsv = exports.downloadReference = exports.downloadTemplate = exports.getImportOptions = void 0;
 const database_1 = require("../../config/database");
+const types_1 = require("../../types");
 const responseHandler_1 = require("../../utils/responseHandler");
 const bulk_import_service_1 = require("./bulk-import.service");
 const getImportOptions = async (_req, res) => {
@@ -57,6 +58,15 @@ const uploadCsv = async (req, res) => {
         (0, responseHandler_1.errorResponse)(res, 'Only CSV files are supported', 400, 'INVALID_FILE_TYPE');
         return;
     }
+    const selectedSport = String(req.body?.sport || '').trim();
+    if (entity === 'fixtures' && !selectedSport) {
+        (0, responseHandler_1.errorResponse)(res, 'Select a sport for this fixture document', 400, 'SPORT_REQUIRED');
+        return;
+    }
+    if (entity === 'fixtures' && req.user?.role === types_1.UserRole.ASSOCIATION_ADMIN && !req.user.associationId) {
+        (0, responseHandler_1.errorResponse)(res, 'An association is required to import fixtures', 403, 'ASSOCIATION_REQUIRED');
+        return;
+    }
     const rows = (0, bulk_import_service_1.parseCsv)(req.file.buffer.toString('utf8'));
     if (rows.length === 0) {
         (0, responseHandler_1.errorResponse)(res, 'CSV file has no data rows', 400, 'EMPTY_CSV');
@@ -65,7 +75,10 @@ const uploadCsv = async (req, res) => {
     const client = await database_1.pool.connect();
     try {
         await client.query('BEGIN');
-        const summary = await (0, bulk_import_service_1.importRows)(client, entity, rows, apply);
+        const summary = await (0, bulk_import_service_1.importRows)(client, entity, rows, apply, {
+            sport: entity === 'fixtures' ? selectedSport : undefined,
+            associationId: entity === 'fixtures' && req.user?.role === types_1.UserRole.ASSOCIATION_ADMIN ? req.user.associationId : undefined,
+        });
         if (apply && summary.errors.length === 0) {
             await client.query('COMMIT');
         }

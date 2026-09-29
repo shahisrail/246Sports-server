@@ -4,6 +4,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteLatestUpdate = exports.updateLatestUpdate = exports.importLatestUpdates = exports.getLatestUpdateById = exports.getLatestUpdates = void 0;
+const schedule_csv_1 = require("./schedule-csv");
+const fixture_visibility_1 = require("../fixtures/fixture-visibility");
 const path_1 = __importDefault(require("path"));
 const zlib_1 = __importDefault(require("zlib"));
 const uuid_1 = require("uuid");
@@ -49,12 +51,16 @@ const getLatestUpdates = async (req, res) => {
         const params = [];
         const userRole = String(req.user?.role || '').toUpperCase();
         const isAdmin = [types_1.UserRole.SUPER_ADMIN, types_1.UserRole.ASSOCIATION_ADMIN].includes(userRole);
-        const selectedStatus = isAdmin ? status : 'PUBLISHED';
+        const publicView = req.query.public === 'true' || !isAdmin;
+        const selectedStatus = publicView ? 'PUBLISHED' : status;
         let sql = `
       SELECT *, COUNT(*) OVER() AS total_count
       FROM latest_updates
       WHERE deleted_at IS NULL
     `;
+        if (publicView) {
+            sql += ` AND COALESCE(end_date, start_date) >= ${fixture_visibility_1.BARBADOS_TODAY_SQL}`;
+        }
         if (selectedStatus) {
             sql += ` AND status = $${params.length + 1}`;
             params.push(selectedStatus);
@@ -109,7 +115,7 @@ const getLatestUpdateById = async (req, res) => {
     try {
         const userRole = String(req.user?.role || '').toUpperCase();
         const isAdmin = [types_1.UserRole.SUPER_ADMIN, types_1.UserRole.ASSOCIATION_ADMIN].includes(userRole);
-        const result = await (0, database_1.query)(`SELECT * FROM latest_updates WHERE id = $1 AND deleted_at IS NULL ${isAdmin ? '' : "AND status = 'PUBLISHED'"}`, [req.params.id]);
+        const result = await (0, database_1.query)(`SELECT * FROM latest_updates WHERE id = $1 AND deleted_at IS NULL ${isAdmin && req.query.public !== 'true' ? '' : `AND status = 'PUBLISHED' AND COALESCE(end_date, start_date) >= ${fixture_visibility_1.BARBADOS_TODAY_SQL}`}`, [req.params.id]);
         if (result.rows.length === 0) {
             (0, responseHandler_1.errorResponse)(res, 'Latest update not found', 404, 'LATEST_UPDATE_NOT_FOUND');
             return;
@@ -134,7 +140,22 @@ const importLatestUpdates = async (req, res) => {
         return;
     }
     try {
-        const extracted = extractUpdatesFromUpload(req.file.buffer, req.file.originalname);
+        const selectedSport = String(req.body?.sport || '').trim();
+        if (selectedSport) {
+            const sport = await (0, database_1.query)('SELECT id FROM sports WHERE lower(name)=lower($1) AND deleted_at IS NULL AND is_active=true', [selectedSport]);
+            if (!sport.rows.length) {
+                (0, responseHandler_1.errorResponse)(res, 'Select an active sport', 400, 'INVALID_SPORT');
+                return;
+            }
+        }
+        let extracted;
+        try {
+            extracted = extractUpdatesFromUpload(req.file.buffer, req.file.originalname);
+        }
+        catch (error) {
+            (0, responseHandler_1.errorResponse)(res, error.message || 'Invalid schedule document', 400, 'INVALID_SCHEDULE_DOCUMENT');
+            return;
+        }
         const updates = Array.isArray(extracted.updates) ? extracted.updates : [];
         if (updates.length === 0) {
             (0, responseHandler_1.successResponse)(res, { imported: 0, updates: [], warnings: ['No dated updates were detected in this document.'] }, 'No updates detected');
@@ -145,6 +166,25 @@ const importLatestUpdates = async (req, res) => {
             await client.query('BEGIN');
             const inserted = [];
             for (const item of updates) {
+                item.sport = selectedSport || item.sport || 'General Sports';
+                // Re-importing an unchanged schedule updates its event instead of duplicating it.
+                const existing = await client.query(item.id
+                    ? 'SELECT id FROM latest_updates WHERE id=$1 AND lower(sport)=lower($2) AND deleted_at IS NULL'
+                    : `SELECT id FROM latest_updates WHERE lower(title)=lower($1) AND lower(sport)=lower($2)
+               AND start_date=$3 AND deleted_at IS NULL ORDER BY created_at LIMIT 1`, item.id ? [item.id, item.sport] : [item.title, item.sport, item.start_date]);
+                if (item.id && !existing.rows.length)
+                    throw new Error('Event id was not found in the selected sport');
+                if (existing.rows.length) {
+                    const updated = await client.query(`UPDATE latest_updates SET description=$1, end_date=$2, time=$3, venue=$4, location=$5,
+             home_team=$6, away_team=$7, source_file=$8, source_type=$9,
+             status=CASE WHEN $10 THEN 'PUBLISHED' ELSE 'DRAFT' END,
+             published_at=CASE WHEN $10 THEN COALESCE(published_at, CURRENT_TIMESTAMP) ELSE NULL END,
+             title=$12, start_date=$13, event_type=$14, updated_at=CURRENT_TIMESTAMP WHERE id=$11 RETURNING *`, [item.description || item.title, item.end_date || item.start_date, item.time || null,
+                        item.venue || null, item.location || null, item.home_team || null, item.away_team || null,
+                        req.file.originalname, sourceType, publish, existing.rows[0].id, item.title, item.start_date, normalizeType(item.event_type)]);
+                    inserted.push(updated.rows[0]);
+                    continue;
+                }
                 const insertedRow = await client.query(`INSERT INTO latest_updates (
              id, title, description, sport, event_type, start_date, end_date, time, venue, location,
              home_team, away_team, source_file, source_type, confidence_score, status, published_at, created_by
@@ -263,6 +303,8 @@ function normalizeType(value) {
 }
 function extractUpdatesFromUpload(buffer, originalName) {
     const ext = path_1.default.extname(originalName).toLowerCase();
+    if (ext === '.csv')
+        return { text_length: buffer.length, updates: (0, schedule_csv_1.parseScheduleCsv)(buffer.toString('utf8')) };
     const text = extractUploadText(buffer, ext);
     return {
         text_length: text.length,

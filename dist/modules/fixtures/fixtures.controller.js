@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.exportFixtureICS = exports.getFinishedFixtures = exports.getUpcomingFixtures = exports.getFixtureDirections = exports.getFixtureAsICS = exports.deleteFixture = exports.updateFixture = exports.createFixture = exports.getFixtureById = exports.getTodayFixtures = exports.getFixtures = void 0;
+const fixture_visibility_1 = require("./fixture-visibility");
 const uuid_1 = require("uuid");
 const database_1 = require("../../config/database");
 const responseHandler_1 = require("../../utils/responseHandler");
@@ -58,11 +59,12 @@ const ics_service_1 = require("../../services/ics.service");
  */
 const getFixtures = async (req, res) => {
     try {
-        const { page = 1, limit = 10, competition_id, team_id, venue_id, status, date_from, date_to, } = req.query;
+        const { page = 1, limit = 10, competition_id, team_id, venue_id, status, date_from, date_to, sport, public: publicView, period, } = req.query;
         const offset = (Number(page) - 1) * Number(limit);
         let queryText = `
       SELECT
         f.*,
+        ${publicView === 'true' ? `to_char(f.date_time, 'YYYY-MM-DD"T"HH24:MI:SS') || '-04:00' AS date_time,` : ''}
         c.name as competition_name,
         c.sport as competition_sport,
         c.id as competition_id,
@@ -83,6 +85,17 @@ const getFixtures = async (req, res) => {
       WHERE f.deleted_at IS NULL
     `;
         let params = [];
+        if (publicView === 'true') {
+            queryText += ` AND ${fixture_visibility_1.PUBLIC_FIXTURE_SQL}`;
+            if (period === 'today')
+                queryText += ` AND f.date_time < ${fixture_visibility_1.BARBADOS_TODAY_SQL} + INTERVAL '1 day'`;
+            if (period === 'upcoming')
+                queryText += ` AND f.date_time >= ${fixture_visibility_1.BARBADOS_TODAY_SQL} + INTERVAL '1 day'`;
+        }
+        if (sport) {
+            queryText += ` AND lower(c.sport) = lower($${params.length + 1})`;
+            params.push(sport);
+        }
         // TENANT ISOLATION: Filter fixtures by user's association
         if (req.user && req.user.role !== types_1.UserRole.SUPER_ADMIN) {
             if (req.user.role === types_1.UserRole.ASSOCIATION_ADMIN && req.user.associationId) {
@@ -92,7 +105,7 @@ const getFixtures = async (req, res) => {
             else if ((req.user.role === types_1.UserRole.CLUB_ADMIN || req.user.role === types_1.UserRole.TEAM_MANAGER) && req.user.clubId) {
                 // Club admins and team managers can only see fixtures involving their club's teams
                 queryText += ` AND (ht.club_id = $${params.length + 1} OR at.club_id = $${params.length + 1})`;
-                params.push(req.user.clubId, req.user.clubId);
+                params.push(req.user.clubId);
             }
         }
         if (competition_id) {
@@ -140,6 +153,11 @@ const getFixtures = async (req, res) => {
             created_at: row.created_at,
             updated_at: row.updated_at,
             deleted_at: row.deleted_at,
+            competition_name: row.competition_name,
+            competition_sport: row.competition_sport,
+            home_team_name: row.home_team_name,
+            away_team_name: row.away_team_name,
+            venue_name: row.venue_name,
             // Nested objects
             competition: {
                 id: row.competition_id,
@@ -170,6 +188,17 @@ const getFixtures = async (req, res) => {
         // Get total count
         let countQuery = 'SELECT COUNT(*) FROM fixtures f LEFT JOIN competitions c ON f.competition_id = c.id LEFT JOIN teams ht ON f.home_team_id = ht.id LEFT JOIN teams at ON f.away_team_id = at.id WHERE f.deleted_at IS NULL';
         let countParams = [];
+        if (publicView === 'true') {
+            countQuery += ` AND ${fixture_visibility_1.PUBLIC_FIXTURE_SQL}`;
+            if (period === 'today')
+                countQuery += ` AND f.date_time < ${fixture_visibility_1.BARBADOS_TODAY_SQL} + INTERVAL '1 day'`;
+            if (period === 'upcoming')
+                countQuery += ` AND f.date_time >= ${fixture_visibility_1.BARBADOS_TODAY_SQL} + INTERVAL '1 day'`;
+        }
+        if (sport) {
+            countQuery += ` AND lower(c.sport) = lower($${countParams.length + 1})`;
+            countParams.push(sport);
+        }
         // Apply same tenant filters to count query
         if (req.user && req.user.role !== types_1.UserRole.SUPER_ADMIN) {
             if (req.user.role === types_1.UserRole.ASSOCIATION_ADMIN && req.user.associationId) {
@@ -177,7 +206,7 @@ const getFixtures = async (req, res) => {
                 countParams.push(req.user.associationId);
             }
             else if ((req.user.role === types_1.UserRole.CLUB_ADMIN || req.user.role === types_1.UserRole.TEAM_MANAGER) && req.user.clubId) {
-                countQuery += ` AND (ht.club_id = $1 OR at.club_id = $1)`;
+                countQuery += ` AND (ht.club_id = $${countParams.length + 1} OR at.club_id = $${countParams.length + 1})`;
                 countParams.push(req.user.clubId);
             }
         }
@@ -280,6 +309,7 @@ const getFixtureById = async (req, res) => {
         const { id } = req.params;
         const result = await (0, database_1.query)(`SELECT
         f.*,
+        ${req.query.public === 'true' ? `to_char(f.date_time, 'YYYY-MM-DD"T"HH24:MI:SS') || '-04:00' AS date_time,` : ''}
         c.name as competition_name,
         c.sport as competition_sport,
         c.id as competition_id,
@@ -302,7 +332,7 @@ const getFixtureById = async (req, res) => {
        LEFT JOIN teams at ON f.away_team_id = at.id
        LEFT JOIN venues v ON f.venue_id = v.id
        LEFT JOIN results r ON f.id = r.fixture_id AND r.status = 'PUBLISHED'
-       WHERE f.id = $1 AND f.deleted_at IS NULL`, [id]);
+       WHERE f.id = $1 AND f.deleted_at IS NULL ${req.query.public === 'true' ? `AND ${fixture_visibility_1.PUBLIC_FIXTURE_SQL}` : ''}`, [id]);
         if (result.rows.length === 0) {
             (0, responseHandler_1.errorResponse)(res, 'Fixture not found', 404, 'FIXTURE_NOT_FOUND');
             return;

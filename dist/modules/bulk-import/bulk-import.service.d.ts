@@ -32,6 +32,9 @@ export declare function isImportEntity(value: string): value is ImportEntity;
 export declare function parseCsv(text: string): CsvRow[];
 export declare function toCsv(rows: Record<string, any>[]): string;
 export declare function exportReference(client: PoolClient, entity: ImportEntity): Promise<string>;
-export declare function importRows(client: PoolClient, entity: ImportEntity, rows: CsvRow[], apply: boolean): Promise<ImportSummary>;
+export declare function importRows(client: PoolClient, entity: ImportEntity, rows: CsvRow[], apply: boolean, scope?: {
+    sport?: string;
+    associationId?: string;
+}): Promise<ImportSummary>;
 export {};
 //# sourceMappingURL=bulk-import.service.d.ts.map
