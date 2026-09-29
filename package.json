@@ -21,7 +21,8 @@
     "debug:email": "ts-node src/scripts/debug-email.ts",
     "setup:ethereal": "ts-node src/scripts/ethereal-setup.ts",
     "build:check": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test:schedules": "node -r ts-node/register --test tests/*.test.js"
   },
   "keywords": [
     "sports",

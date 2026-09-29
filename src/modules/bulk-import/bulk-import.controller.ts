@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { pool } from '../../config/database';
-import { AuthRequest } from '../../types';
+import { AuthRequest, UserRole } from '../../types';
 import { errorResponse, successResponse } from '../../utils/responseHandler';
 import {
   exportReference,
@@ -68,6 +68,15 @@ export const uploadCsv = async (req: AuthRequest, res: Response): Promise<void> 
     return;
   }
 
+  const selectedSport = String(req.body?.sport || '').trim();
+  if (entity === 'fixtures' && !selectedSport) {
+    errorResponse(res, 'Select a sport for this fixture document', 400, 'SPORT_REQUIRED');
+    return;
+  }
+  if (entity === 'fixtures' && req.user?.role === UserRole.ASSOCIATION_ADMIN && !req.user.associationId) {
+    errorResponse(res, 'An association is required to import fixtures', 403, 'ASSOCIATION_REQUIRED');
+    return;
+  }
   const rows = parseCsv(req.file.buffer.toString('utf8'));
   if (rows.length === 0) {
     errorResponse(res, 'CSV file has no data rows', 400, 'EMPTY_CSV');
@@ -77,7 +86,10 @@ export const uploadCsv = async (req: AuthRequest, res: Response): Promise<void> 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const summary = await importRows(client, entity, rows, apply);
+    const summary = await importRows(client, entity, rows, apply, {
+      sport: entity === 'fixtures' ? selectedSport : undefined,
+      associationId: entity === 'fixtures' && req.user?.role === UserRole.ASSOCIATION_ADMIN ? req.user.associationId : undefined,
+    });
 
     if (apply && summary.errors.length === 0) {
       await client.query('COMMIT');

@@ -76,6 +76,7 @@ export const getFixtures = async (req: AuthRequest, res: Response): Promise<void
     let queryText = `
       SELECT
         f.*,
+        ${publicView === 'true' ? `to_char(f.date_time, 'YYYY-MM-DD"T"HH24:MI:SS') || '-04:00' AS date_time,` : ''}
         c.name as competition_name,
         c.sport as competition_sport,
         c.id as competition_id,
@@ -334,6 +335,7 @@ export const getFixtureById = async (req: AuthRequest, res: Response): Promise<v
     const result = await query(
       `SELECT
         f.*,
+        ${req.query.public === 'true' ? `to_char(f.date_time, 'YYYY-MM-DD"T"HH24:MI:SS') || '-04:00' AS date_time,` : ''}
         c.name as competition_name,
         c.sport as competition_sport,
         c.id as competition_id,

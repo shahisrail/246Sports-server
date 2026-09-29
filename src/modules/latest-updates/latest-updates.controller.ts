@@ -1,3 +1,5 @@
+import { parseScheduleCsv } from './schedule-csv';
+import { BARBADOS_TODAY_SQL } from '../fixtures/fixture-visibility';
 import { Response } from 'express';
 import path from 'path';
 import zlib from 'zlib';
@@ -7,6 +9,7 @@ import { AuthRequest, UserRole } from '../../types';
 import { errorResponse, paginatedResponse, successResponse } from '../../utils/responseHandler';
 
 type ExtractedUpdate = {
+  id?: string;
   title: string;
   description?: string;
   sport?: string;
@@ -73,7 +76,8 @@ export const getLatestUpdates = async (req: AuthRequest, res: Response): Promise
     const params: any[] = [];
     const userRole = String(req.user?.role || '').toUpperCase();
     const isAdmin = [UserRole.SUPER_ADMIN, UserRole.ASSOCIATION_ADMIN].includes(userRole as UserRole);
-    const selectedStatus = isAdmin ? status : 'PUBLISHED';
+    const publicView = req.query.public === 'true' || !isAdmin;
+    const selectedStatus = publicView ? 'PUBLISHED' : status;
 
     let sql = `
       SELECT *, COUNT(*) OVER() AS total_count
@@ -81,6 +85,9 @@ export const getLatestUpdates = async (req: AuthRequest, res: Response): Promise
       WHERE deleted_at IS NULL
     `;
 
+    if (publicView) {
+      sql += ` AND COALESCE(end_date, start_date) >= ${BARBADOS_TODAY_SQL}`;
+    }
     if (selectedStatus) {
       sql += ` AND status = $${params.length + 1}`;
       params.push(selectedStatus);
@@ -137,7 +144,7 @@ export const getLatestUpdateById = async (req: AuthRequest, res: Response): Prom
     const userRole = String(req.user?.role || '').toUpperCase();
     const isAdmin = [UserRole.SUPER_ADMIN, UserRole.ASSOCIATION_ADMIN].includes(userRole as UserRole);
     const result = await query(
-      `SELECT * FROM latest_updates WHERE id = $1 AND deleted_at IS NULL ${isAdmin ? '' : "AND status = 'PUBLISHED'"}`,
+      `SELECT * FROM latest_updates WHERE id = $1 AND deleted_at IS NULL ${isAdmin && req.query.public !== 'true' ? '' : `AND status = 'PUBLISHED' AND COALESCE(end_date, start_date) >= ${BARBADOS_TODAY_SQL}`}`,
       [req.params.id]
     );
     if (result.rows.length === 0) {
@@ -165,7 +172,21 @@ export const importLatestUpdates = async (req: AuthRequest, res: Response): Prom
   }
 
   try {
-    const extracted = extractUpdatesFromUpload(req.file.buffer, req.file.originalname);
+    const selectedSport = String(req.body?.sport || '').trim();
+    if (selectedSport) {
+      const sport = await query('SELECT id FROM sports WHERE lower(name)=lower($1) AND deleted_at IS NULL AND is_active=true', [selectedSport]);
+      if (!sport.rows.length) {
+        errorResponse(res, 'Select an active sport', 400, 'INVALID_SPORT');
+        return;
+      }
+    }
+    let extracted: ReturnType<typeof extractUpdatesFromUpload>;
+    try {
+      extracted = extractUpdatesFromUpload(req.file.buffer, req.file.originalname);
+    } catch (error: any) {
+      errorResponse(res, error.message || 'Invalid schedule document', 400, 'INVALID_SCHEDULE_DOCUMENT');
+      return;
+    }
     const updates = Array.isArray(extracted.updates) ? extracted.updates as ExtractedUpdate[] : [];
 
     if (updates.length === 0) {
@@ -178,6 +199,30 @@ export const importLatestUpdates = async (req: AuthRequest, res: Response): Prom
       await client.query('BEGIN');
       const inserted = [];
       for (const item of updates) {
+        item.sport = selectedSport || item.sport || 'General Sports';
+        // Re-importing an unchanged schedule updates its event instead of duplicating it.
+        const existing = await client.query(
+          item.id
+            ? 'SELECT id FROM latest_updates WHERE id=$1 AND lower(sport)=lower($2) AND deleted_at IS NULL'
+            : `SELECT id FROM latest_updates WHERE lower(title)=lower($1) AND lower(sport)=lower($2)
+               AND start_date=$3 AND deleted_at IS NULL ORDER BY created_at LIMIT 1`,
+          item.id ? [item.id, item.sport] : [item.title, item.sport, item.start_date]
+        );
+        if (item.id && !existing.rows.length) throw new Error('Event id was not found in the selected sport');
+        if (existing.rows.length) {
+          const updated = await client.query(
+            `UPDATE latest_updates SET description=$1, end_date=$2, time=$3, venue=$4, location=$5,
+             home_team=$6, away_team=$7, source_file=$8, source_type=$9,
+             status=CASE WHEN $10 THEN 'PUBLISHED' ELSE 'DRAFT' END,
+             published_at=CASE WHEN $10 THEN COALESCE(published_at, CURRENT_TIMESTAMP) ELSE NULL END,
+             title=$12, start_date=$13, event_type=$14, updated_at=CURRENT_TIMESTAMP WHERE id=$11 RETURNING *`,
+            [item.description || item.title, item.end_date || item.start_date, item.time || null,
+             item.venue || null, item.location || null, item.home_team || null, item.away_team || null,
+             req.file.originalname, sourceType, publish, existing.rows[0].id, item.title, item.start_date, normalizeType(item.event_type)]
+          );
+          inserted.push(updated.rows[0]);
+          continue;
+        }
         const insertedRow = await client.query(
           `INSERT INTO latest_updates (
              id, title, description, sport, event_type, start_date, end_date, time, venue, location,
@@ -308,6 +353,7 @@ function normalizeType(value: any) {
 
 function extractUpdatesFromUpload(buffer: Buffer, originalName: string) {
   const ext = path.extname(originalName).toLowerCase();
+  if (ext === '.csv') return { text_length: buffer.length, updates: parseScheduleCsv(buffer.toString('utf8')) };
   const text = extractUploadText(buffer, ext);
   return {
     text_length: text.length,

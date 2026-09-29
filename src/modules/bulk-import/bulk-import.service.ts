@@ -203,7 +203,7 @@ export async function exportReference(client: PoolClient, entity: ImportEntity) 
   return toCsv(result.rows);
 }
 
-export async function importRows(client: PoolClient, entity: ImportEntity, rows: CsvRow[], apply: boolean): Promise<ImportSummary> {
+export async function importRows(client: PoolClient, entity: ImportEntity, rows: CsvRow[], apply: boolean, scope: { sport?: string; associationId?: string } = {}): Promise<ImportSummary> {
   const summary: ImportSummary = {
     entity,
     apply,
@@ -226,7 +226,16 @@ export async function importRows(client: PoolClient, entity: ImportEntity, rows:
         continue;
       }
 
-      const action = await importOne(client, entity, row, apply);
+      let input = row;
+      if (entity === 'fixtures' && scope.sport) {
+        if (row.sport && row.sport.trim().toLowerCase() !== scope.sport.toLowerCase()) {
+          throw new Error(`Document sport ${row.sport} does not match selected sport ${scope.sport}`);
+        }
+        input = { ...row, sport: scope.sport };
+      }
+      const action = entity === 'fixtures'
+        ? await importFixture(client, input, apply, scope.associationId)
+        : await importOne(client, entity, input, apply);
       summary[action.action === 'create' ? 'created' : action.action === 'update' ? 'updated' : 'skipped'] += 1;
       summary.actions.push({ row: rowNumber, entity, ...action });
     } catch (error: any) {
@@ -497,12 +506,26 @@ async function importCompetition(client: PoolClient, row: CsvRow, apply: boolean
   return { action: 'create' as const, name, id };
 }
 
-async function importFixture(client: PoolClient, row: CsvRow, apply: boolean) {
+async function importFixture(client: PoolClient, row: CsvRow, apply: boolean, associationId?: string) {
   const competitionId = await resolveCompetition(client, row.competition_id, row.competition_name, row.sport, true);
+  const competition = await client.query('SELECT sport, association_id FROM competitions WHERE id=$1 AND deleted_at IS NULL', [competitionId]);
+  if (!competition.rows[0] || (row.sport && String(competition.rows[0].sport).toLowerCase() !== row.sport.toLowerCase())) {
+    throw new Error('Competition does not belong to the selected sport');
+  }
+  if (associationId && competition.rows[0].association_id !== associationId) throw new Error('Competition does not belong to your association');
+  if (row.id) {
+    const target = await client.query('SELECT c.sport, c.association_id FROM fixtures f JOIN competitions c ON c.id=f.competition_id WHERE f.id=$1 AND f.deleted_at IS NULL', [row.id]);
+    if (!target.rows[0]) throw new Error('Fixture ID was not found; leave id blank to create a new fixture');
+    if (row.sport && String(target.rows[0].sport).toLowerCase() !== row.sport.toLowerCase()) throw new Error('Existing fixture belongs to another sport');
+    if (associationId && target.rows[0].association_id !== associationId) throw new Error('Existing fixture does not belong to your association');
+  }
   const homeTeamId = await resolveTeam(client, row.home_team_id, row.home_team, undefined, undefined, true);
   const awayTeamId = await resolveTeam(client, row.away_team_id, row.away_team, undefined, undefined, true);
   const venueId = await resolveVenue(client, row.venue_id, row.venue, false);
+  if (homeTeamId === awayTeamId) throw new Error('Home and away teams must be different');
   const dateTime = combineDateTime(row.date, row.time);
+  const status = enumValue(row.status, 'SCHEDULED');
+  if (!['SCHEDULED', 'LIVE', 'FINISHED', 'POSTPONED', 'CANCELLED'].includes(status)) throw new Error('Invalid fixture status');
   const name = `${row.home_team || homeTeamId} vs ${row.away_team || awayTeamId}`;
   const existing = row.id ? await findById(client, 'fixtures', row.id) : await findFixture(client, competitionId, homeTeamId, awayTeamId, dateTime);
   if (!apply) return actionFor(existing, name);
@@ -512,7 +535,7 @@ async function importFixture(client: PoolClient, row: CsvRow, apply: boolean) {
     awayTeamId,
     venueId,
     dateTime,
-    enumValue(row.status, 'SCHEDULED'),
+    status,
     row.round || null,
     row.stream_url || null,
   ];
@@ -748,8 +771,11 @@ function arrayValue(value: any) {
 
 function combineDateTime(date: string, time?: string) {
   const safeDate = normalize(date);
-  if (!safeDate) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(safeDate) || !Number.isFinite(Date.parse(safeDate)) || new Date(safeDate).toISOString().slice(0, 10) !== safeDate) {
+    throw new Error('date must be a valid date in YYYY-MM-DD format');
+  }
   const safeTime = normalize(time) || '15:00';
+  if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(safeTime)) throw new Error('time must use 24-hour HH:mm format');
   return `${safeDate} ${safeTime}:00`;
 }
 

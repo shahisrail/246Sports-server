@@ -50,3 +50,23 @@ test('upcoming list begins tomorrow in Barbados', async () => {
   await getFixtures({ query: { public: 'true', period: 'upcoming' } }, response());
   for (const call of calls) assert.match(call.sql, /f.date_time >= .*::date \+ INTERVAL '1 day'/);
 });
+
+const { getLatestUpdates } = require('../src/modules/latest-updates/latest-updates.controller');
+test('calendar uses end date and forces published status even for signed-in admins', async () => {
+  calls.length = 0;
+  await getLatestUpdates({ query: { public: 'true', status: 'DRAFT' }, user: { role: 'SUPER_ADMIN' } }, response());
+  assert.match(calls[0].sql, /COALESCE\(end_date, start_date\) >= .*America\/Barbados/);
+  assert.equal(calls[0].params[0], 'PUBLISHED');
+});
+test('anonymous event requests cannot expose drafts or past events', async () => {
+  calls.length = 0;
+  await getLatestUpdates({ query: { status: 'DRAFT' } }, response());
+  assert.match(calls[0].sql, /COALESCE\(end_date, start_date\)/);
+  assert.equal(calls[0].params[0], 'PUBLISHED');
+});
+test('calendar administrators retain access to expired drafts in their dashboard', async () => {
+  calls.length = 0;
+  await getLatestUpdates({ query: { status: 'DRAFT' }, user: { role: 'SUPER_ADMIN' } }, response());
+  assert.doesNotMatch(calls[0].sql, /COALESCE\(end_date, start_date\)/);
+  assert.equal(calls[0].params[0], 'DRAFT');
+});
