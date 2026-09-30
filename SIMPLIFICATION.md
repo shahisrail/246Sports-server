@@ -40,4 +40,19 @@ Direct PDF import is not supported by the existing server parser, so the upload 
 - Backend: `npm run build` — passed; `npm run test:schedules` — all 18 tests passed.
 - Schedule tests stub the database boundary and cover public visibility filters, admin history, published-only events, sport/association checks, input validation, ID-based fixture rescheduling, CSV parsing, multi-day dates and calendar re-imports.
 - No new schema migration or external package is required. Deploy both repositories together, since the frontend relies on the new API filters and document CSV support.
-- Production deployment and real-database/browser acceptance checks have not been performed in this workspace.
+- Local real-database and desktop/mobile browser acceptance checks have passed; see the results below. Production deployment has not been performed.
+
+## Acceptance verification — 30 September 2026
+
+Verified against an isolated PostgreSQL 18 instance and the actual Express API, with seeded disposable records. Headless Chrome used desktop (1440px) and mobile (390px) viewports, including Asia/Dhaka browser time to check Barbados schedule handling. Production data was not used.
+
+- 18 schedule regression tests passed.
+- 12 real-database/API checks passed: expiry, pagination totals, sport/date filters, admin history, dry-run without writes, persisted imports, full rollback on invalid rows, rescheduling by ID, sport validation, calendar drafts/publication, deduplication and invalid dates.
+- 9 browser checks passed: five public pages, navigation, calendar visibility, filters, expired detail/legacy redirects, mobile layout/navigation, actual login, fixture CSV preview/import and calendar document upload/publication.
+- No JavaScript page errors or API 5xx responses occurred in the final browser run.
+
+Issues found and fixed: fresh database schema ordering and a SQL typo, missing incremental tables on first startup, expired fixture details stuck loading, missing filter accessible names, and obsolete Home metrics.
+
+Acceptance scripts are under `tests/acceptance/` in each repository. Backend `server.cjs` is restricted to the disposable `sports_qa` database on 127.0.0.1:55462 and recreates only that test schema. Run it first, then backend `api.cjs`, then frontend `browser.cjs`. Frontend must run on 127.0.0.1:5179 with VITE_API_BASE_URL=http://127.0.0.1:4409. Browser testing requires Playwright (QA_PLAYWRIGHT_PATH) and Chrome (QA_CHROME); temporary QA artifacts use QA_OUTPUT, defaulting to /tmp/246-acceptance. Tests must use a fresh test server to avoid stale seeded IDs and prior run data.
+
+Production deployment has not been performed.

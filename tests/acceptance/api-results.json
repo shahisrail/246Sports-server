@@ -1,0 +1,18 @@
+{
+  "passed": 12,
+  "checks": [
+    "public expiry and total count execute against PostgreSQL",
+    "sport filter and Barbados today/upcoming filters",
+    "expired detail hidden and admin history retained",
+    "calendar keeps multi-day current events and hides expired/drafts for admins",
+    "fixture dry-run performs no writes",
+    "valid fixture import creates a real persisted row",
+    "failed multi-row import rolls back earlier successful rows",
+    "fixture reschedule updates by ID without duplicate",
+    "sport mismatch is rejected in real import",
+    "calendar CSV saves draft then publishes through actual API",
+    "calendar re-import deduplicates and reschedules by event ID",
+    "invalid calendar date and missing fixture sport return 400"
+  ],
+  "verified_on": "2026-09-30"
+}

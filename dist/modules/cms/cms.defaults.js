@@ -79,7 +79,7 @@ const defaultContent = {
     home: {
         badge: 'Official Bajan Sports Platform',
         heroTitle: 'The Home of|Athletic Excellence',
-        heroDescription: 'Track real-time fixtures, explore disciplines, and follow national associations in one unified ecosystem.',
+        heroDescription: 'Latest news, live action and upcoming fixtures across Barbados sport.',
         stats: [
             { label: 'Sports Covered', value: '12+' },
             { label: 'Live Events', value: '24/7' },
