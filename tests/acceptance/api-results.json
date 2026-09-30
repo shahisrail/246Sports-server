@@ -1,10 +1,11 @@
 {
-  "passed": 12,
+  "passed": 13,
   "checks": [
     "public expiry and total count execute against PostgreSQL",
     "sport filter and Barbados today/upcoming filters",
     "expired detail hidden and admin history retained",
     "calendar keeps multi-day current events and hides expired/drafts for admins",
+    "Updates Today includes current and ongoing events in real SQL",
     "fixture dry-run performs no writes",
     "valid fixture import creates a real persisted row",
     "failed multi-row import rolls back earlier successful rows",

@@ -35,6 +35,14 @@ const fixtureCsv = (id = '', date = days.later, status = 'SCHEDULED') => `id,com
     const result = await api('/latest-updates?public=true', { headers: { Authorization: `Bearer ${token}` } });
     assert.deepEqual(result.data.map((e) => e.title).sort(), ['QA current regatta', 'QA ongoing event']);
   });
+  await check('Updates Today includes current and ongoing events in real SQL', async () => {
+    const result = await api('/latest-updates?public=true&period=today');
+    assert.deepEqual(result.data.map((event) => event.title).sort(), ['QA current regatta', 'QA ongoing event']);
+    for (const period of ['week', 'month']) {
+      const filtered = await api('/latest-updates?public=true&period=' + period);
+      assert.ok(filtered.data.some(event => event.title === 'QA ongoing event'));
+    }
+  });
   await check('fixture dry-run performs no writes', async () => {
     const result = await upload('/bulk-import/fixtures/upload?apply=false', fixtureCsv(), 'Cricket'); assert.equal(result.data.errors.length, 0); assert.equal(result.data.created, 1);
     assert.equal(Number((await pool.query('SELECT COUNT(*) FROM fixtures')).rows[0].count), 6);

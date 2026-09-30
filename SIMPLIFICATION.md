@@ -2,7 +2,7 @@
 
 ## Public site
 
-The main sections are Home, News, Live, Calendar and Fixtures. Existing news and fixture detail URLs remain available. `/streams` redirects to `/live`; retired public sections fall back to Home. Authentication, administrative management and footer Privacy/Terms pages remain available.
+The main sections are Home, News, Live, Calendar, Fixtures and Updates. Updates was restored at the owner's request on 30 September 2026, at `/latest-updates` with `/updates` as an alias. Existing news and fixture detail URLs remain available. `/streams` redirects to `/live`; retired public sections fall back to Home. Authentication, administrative management and footer Privacy/Terms pages remain available.
 
 Fixtures are shown when dated today or later in America/Barbados and their status is SCHEDULED, LIVE or POSTPONED. FINISHED/CANCELLED fixtures disappear immediately on the next fetch. Past dates disappear automatically, with no delete job and no loss of admin history. Open Fixtures, Live, Calendar and fixture-detail views refresh every 30 seconds; Home refreshes every 60 seconds.
 
@@ -56,3 +56,9 @@ Issues found and fixed: fresh database schema ordering and a SQL typo, missing i
 Acceptance scripts are under `tests/acceptance/` in each repository. Backend `server.cjs` is restricted to the disposable `sports_qa` database on 127.0.0.1:55462 and recreates only that test schema. Run it first, then backend `api.cjs`, then frontend `browser.cjs`. Frontend must run on 127.0.0.1:5179 with VITE_API_BASE_URL=http://127.0.0.1:4409. Browser testing requires Playwright (QA_PLAYWRIGHT_PATH) and Chrome (QA_CHROME); temporary QA artifacts use QA_OUTPUT, defaulting to /tmp/246-acceptance. Tests must use a fresh test server to avoid stale seeded IDs and prior run data.
 
 Production deployment has not been performed.
+
+## Updates restored — 30 September 2026
+
+Updates is included in desktop/mobile navigation, footer and sitemap. It displays only current published events, even for signed-in administrators, and refreshes every 30 seconds. Today/week/month filters use Barbados dates and retain ongoing multi-day events. Error states allow retry. CMS heading separators are rendered as spaces.
+
+Expanded local verification passed: 20 regression tests, 13 PostgreSQL/API checks and 10 desktop/mobile browser checks. Live-site checks are read-only except for signing in; production imports are not performed.

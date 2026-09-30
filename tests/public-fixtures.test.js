@@ -70,3 +70,19 @@ test('calendar administrators retain access to expired drafts in their dashboard
   assert.doesNotMatch(calls[0].sql, /COALESCE\(end_date, start_date\)/);
   assert.equal(calls[0].params[0], 'DRAFT');
 });
+
+test('Updates Today includes ongoing multi-day events in Barbados time', async () => {
+  calls.length = 0;
+  await getLatestUpdates({ query: { public: 'true', period: 'today' } }, response());
+  assert.match(calls[0].sql, /start_date <= .*America\/Barbados/);
+  assert.match(calls[0].sql, /COALESCE\(end_date, start_date\) >=/);
+});
+test('Updates week and month use date overlap in Barbados time', async () => {
+  for (const period of ['week', 'month']) {
+    calls.length = 0;
+    await getLatestUpdates({ query: { public: 'true', period } }, response());
+    assert.match(calls[0].sql, /America\/Barbados/);
+    assert.match(calls[0].sql, /start_date </);
+    assert.doesNotMatch(calls[0].sql, /CURRENT_DATE/);
+  }
+});

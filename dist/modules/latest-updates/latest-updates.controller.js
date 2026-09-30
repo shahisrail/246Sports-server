@@ -77,16 +77,15 @@ const getLatestUpdates = async (req, res) => {
             sql += ` AND (title ILIKE $${params.length + 1} OR description ILIKE $${params.length + 1} OR venue ILIKE $${params.length + 1})`;
             params.push(`%${search}%`);
         }
-        const today = new Date().toISOString().slice(0, 10);
         if (period === 'today') {
-            sql += ` AND start_date = $${params.length + 1}`;
-            params.push(today);
+            sql += ` AND start_date <= ${fixture_visibility_1.BARBADOS_TODAY_SQL} AND COALESCE(end_date, start_date) >= ${fixture_visibility_1.BARBADOS_TODAY_SQL}`;
         }
         else if (period === 'week') {
-            sql += ` AND start_date >= CURRENT_DATE AND start_date < CURRENT_DATE + INTERVAL '7 days'`;
+            sql += ` AND start_date < ${fixture_visibility_1.BARBADOS_TODAY_SQL} + INTERVAL '7 days' AND COALESCE(end_date, start_date) >= ${fixture_visibility_1.BARBADOS_TODAY_SQL}`;
         }
         else if (period === 'month') {
-            sql += ` AND start_date >= date_trunc('month', CURRENT_DATE)::date AND start_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date`;
+            sql += ` AND start_date < date_trunc('month', ${fixture_visibility_1.BARBADOS_TODAY_SQL}) + INTERVAL '1 month'
+               AND COALESCE(end_date, start_date) >= date_trunc('month', ${fixture_visibility_1.BARBADOS_TODAY_SQL})::date`;
         }
         if (date_from) {
             sql += ` AND start_date >= $${params.length + 1}`;
