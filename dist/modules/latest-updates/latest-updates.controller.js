@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteLatestUpdate = exports.updateLatestUpdate = exports.importLatestUpdates = exports.getLatestUpdateById = exports.getLatestUpdates = void 0;
+exports.parseDatedUpdates = parseDatedUpdates;
 const schedule_csv_1 = require("./schedule-csv");
 const fixture_visibility_1 = require("../fixtures/fixture-visibility");
 const path_1 = __importDefault(require("path"));
@@ -314,7 +315,7 @@ function extractUploadText(buffer, ext) {
     if (ext === '.docx')
         return extractDocxText(buffer);
     if (ext === '.txt' || ext === '.csv')
-        return cleanText(buffer.toString('utf8'));
+        return normalizeDocumentText(buffer.toString('utf8'));
     if (ext === '.pdf') {
         const error = new Error('PDF import needs server PDF parsing support. Please upload DOCX, TXT, or CSV for now.');
         error.code = 'UNSUPPORTED_FILE_TYPE';
@@ -329,10 +330,15 @@ function extractDocxText(buffer) {
     if (!documentXml) {
         throw new Error('Could not read the DOCX document body.');
     }
-    const xml = documentXml
+    // A Word table commonly has a paragraph inside every cell. Convert the table
+    // before treating paragraphs as lines, otherwise every cell becomes its own row.
+    const tableAwareXml = documentXml.replace(/<w:tr\b[^>]*>([\s\S]*?)<\/w:tr>/g, (_row, cells) => (`${cells.replace(/<\/w:tc>/g, '\t').replace(/<\/w:p>/g, ' ')}\n`));
+    const xml = tableAwareXml
+        // Keep table cells and rows distinct. Stripping all XML tags used to join a
+        // Word table into one sentence, so date-first schedule rows could not be read.
         .replace(/<\/w:p>|<\/w:tr>/g, '\n')
         .replace(/<[^>]+>/g, ' ');
-    return cleanText(decodeXmlEntities(xml));
+    return normalizeDocumentText(decodeXmlEntities(xml));
 }
 function readZipEntry(zip, targetName) {
     const eocdOffset = findEndOfCentralDirectory(zip);
@@ -377,6 +383,12 @@ function findEndOfCentralDirectory(zip) {
     return -1;
 }
 function parseDatedUpdates(text) {
+    const tableUpdates = parseTableSchedule(text);
+    if (tableUpdates.length)
+        return tableUpdates;
+    const flattenedTableUpdates = parseFlattenedTableSchedule(text);
+    if (flattenedTableUpdates.length)
+        return flattenedTableUpdates;
     const year = inferYear(text);
     const headingPattern = /\b((?:Sat(?:urday)?|Sun(?:day)?|Mon(?:day)?|Tue(?:s|sday)?|Tues(?:day)?|Wed(?:nesday)?|Thu(?:rs|rsday)?|Thursday|Fri(?:day)?))\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?\.?/gi;
     const matches = Array.from(text.matchAll(headingPattern));
@@ -410,6 +422,96 @@ function parseDatedUpdates(text) {
     });
     return updates;
 }
+function parseTableSchedule(text) {
+    const updates = [];
+    for (const rawLine of text.split(/\r?\n/)) {
+        const columns = rawLine.split('\t').map(cleanText).filter(Boolean);
+        if (columns.length < 4)
+            continue;
+        const startDate = parseTableDate(columns[0]);
+        if (!startDate)
+            continue;
+        // Expected document columns: Date, Sport, Event, Time, Venue.
+        const [sport, title, timeRaw = '', venue = ''] = columns.slice(1);
+        if (!title)
+            continue;
+        const time = /^(?:—|-|n\/?a)$/i.test(timeRaw) ? '' : extractTime(timeRaw) || timeRaw;
+        const [homeTeam, awayTeam] = extractTeams(title);
+        const normalizedVenue = /^(?:—|-|n\/?a)$/i.test(venue) ? '' : venue;
+        updates.push({
+            title: title.slice(0, 255),
+            description: title,
+            sport: sport || inferSport(title),
+            event_type: inferType(title),
+            start_date: startDate,
+            end_date: startDate,
+            time,
+            venue: normalizedVenue,
+            location: normalizedVenue,
+            home_team: homeTeam,
+            away_team: awayTeam,
+            confidence_score: 0.98,
+        });
+    }
+    return updates;
+}
+function parseTableDate(value) {
+    const match = value.match(/^(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)(?:day)?\s+)?(\d{1,2})\s+([A-Za-z]+)\s+(20\d{2})$/i);
+    if (!match)
+        return null;
+    const month = months[match[2].toLowerCase().replace(/\.$/, '')];
+    const day = Number(match[1]);
+    if (!month || day < 1 || day > 31)
+        return null;
+    const result = `${match[3]}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    return new Date(`${result}T00:00:00Z`).toISOString().slice(0, 10) === result ? result : null;
+}
+function parseFlattenedTableSchedule(text) {
+    const sports = [
+        'Bodybuilding & Fitness', 'Mixed Martial Arts (MMA)', 'Canoeing / Kayaking', 'Sports Medicine',
+        'Track and Field', 'Table Tennis', 'Martial Arts', 'Horse racing', 'Beach soccer', 'Dance sport',
+        'Motorsport (Formula 1)', 'Field Hockey', 'Ice Skating', 'Road Tennis', 'Weightlifting',
+        'Motorsport', 'Triathlon', 'Equestrian', 'Badminton', 'Basketball', 'Cheerleading', 'Cycling',
+        'Cricket', 'Football', 'Netball', 'Archery', 'Boxing', 'Chess', 'Darts', 'Fencing', 'Golf',
+        'Gymnastics', 'Handball', 'Judo', 'Karate', 'Orienteering', 'Pool', 'Rowing', 'Rugby', 'Sailing',
+        'Shooting', 'Skateboarding', 'Skiing', 'Squash', 'Surfing', 'Swimming', 'Taekwondo', 'Tennis',
+        'Volleyball', 'Wrestling', 'Wushu', 'Bridge', 'Dance', 'Dominoes/Cards',
+    ].sort((a, b) => b.length - a.length);
+    const sportPattern = new RegExp(`^(${sports.map(escapeRegExp).join('|')})\\s+(.+)$`, 'i');
+    const updates = [];
+    for (const rawLine of text.split(/\r?\n/)) {
+        const line = cleanText(rawLine);
+        const dateMatch = line.match(/^(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)(?:day)?\s+)?(\d{1,2})\s+([A-Za-z]+)\s+(20\d{2})\s+(.+)$/i);
+        if (!dateMatch)
+            continue;
+        const startDate = parseTableDate(`${dateMatch[1]} ${dateMatch[2]} ${dateMatch[3]}`);
+        const eventMatch = dateMatch[4].match(sportPattern);
+        if (!startDate || !eventMatch)
+            continue;
+        const sport = eventMatch[1];
+        const content = eventMatch[2].trim();
+        const timeMatch = content.match(/\b\d{1,2}:\d{2}\b/);
+        const dashIndex = content.search(/\s(?:—|-)\s/);
+        const title = cleanText(timeMatch
+            ? content.slice(0, timeMatch.index)
+            : dashIndex >= 0 ? content.slice(0, dashIndex) : content);
+        const venue = cleanText(timeMatch
+            ? content.slice((timeMatch.index || 0) + timeMatch[0].length)
+            : dashIndex >= 0 ? content.slice(dashIndex + 3) : '');
+        if (!title)
+            continue;
+        const [homeTeam, awayTeam] = extractTeams(title);
+        updates.push({
+            title: title.slice(0, 255), description: title, sport, event_type: inferType(title),
+            start_date: startDate, end_date: startDate, time: timeMatch?.[0] || '', venue, location: venue,
+            home_team: homeTeam, away_team: awayTeam, confidence_score: 0.9,
+        });
+    }
+    return updates;
+}
+function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 function splitItems(segment) {
     const normalized = segment.replace(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm))\s*[.]+\s*/gi, '$1 ');
     return normalized
@@ -424,6 +526,14 @@ function cleanText(value) {
         .replace(/\s+([.,;:])/g, '$1')
         .trim()
         .replace(/^[.\s]+|[.\s]+$/g, '');
+}
+function normalizeDocumentText(value) {
+    return decodeXmlEntities(value || '')
+        .replace(/\u2026/g, '...')
+        .replace(/[^\S\r\n\t]+/g, ' ')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n[ \t]+/g, '\n')
+        .trim();
 }
 function decodeXmlEntities(value) {
     return value
