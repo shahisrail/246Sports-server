@@ -27,6 +27,7 @@ require.cache[databasePath] = { id: databasePath, filename: databasePath, loaded
   query: async () => ({ rows: [{ id: 'sport' }] }), pool: { connect: async () => client },
 } };
 const { importLatestUpdates } = require('../src/modules/latest-updates/latest-updates.controller');
+const { parseDatedUpdates } = require('../src/modules/latest-updates/latest-updates.controller');
 function response() { return { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } }; }
 function request(csv, publish = false) { return {
   query: { publish: String(publish) }, body: { sport: 'Sailing' }, user: { userId: 'admin', role: 'SUPER_ADMIN' },
@@ -57,4 +58,22 @@ test('invalid calendar CSV returns validation error without starting an import',
   await importLatestUpdates(request('title,start_date\nRegatta,2026-02-30'), res);
   assert.equal(res.statusCode, 400);
   assert.equal(operations.length, 0);
+});
+
+test('calendar document reads date-first Word or TXT table rows', () => {
+  const updates = parseDatedUpdates([
+    'Date\tSport\tEvent\tTime\tVenue',
+    'Mon 19 Oct 2026\tCricket\tIMC Over-40s Cricket World Cup: Colombia v Namibia\t09:30\tLusignan Community Centre Ground',
+    'Tue 20 Oct 2026\tFootball\tPrime Minister’s Cup: Pinelands vs St Andrew Lions\t21:00\tSpeightstown',
+  ].join('\n'));
+  assert.equal(updates.length, 2);
+  assert.deepEqual(updates[0], {
+    title: 'IMC Over-40s Cricket World Cup: Colombia v Namibia',
+    description: 'IMC Over-40s Cricket World Cup: Colombia v Namibia',
+    sport: 'Cricket', event_type: 'FIXTURE', start_date: '2026-10-19', end_date: '2026-10-19',
+    time: '09:30', venue: 'Lusignan Community Centre Ground', location: 'Lusignan Community Centre Ground',
+    home_team: 'IMC Over-40s Cricket World Cup: Colombia', away_team: 'Namibia', confidence_score: 0.98,
+  });
+  assert.equal(updates[1].start_date, '2026-10-20');
+  assert.equal(updates[1].sport, 'Football');
 });

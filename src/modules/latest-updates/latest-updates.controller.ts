@@ -362,7 +362,7 @@ function extractUpdatesFromUpload(buffer: Buffer, originalName: string) {
 
 function extractUploadText(buffer: Buffer, ext: string): string {
   if (ext === '.docx') return extractDocxText(buffer);
-  if (ext === '.txt' || ext === '.csv') return cleanText(buffer.toString('utf8'));
+  if (ext === '.txt' || ext === '.csv') return normalizeDocumentText(buffer.toString('utf8'));
   if (ext === '.pdf') {
     const error: any = new Error('PDF import needs server PDF parsing support. Please upload DOCX, TXT, or CSV for now.');
     error.code = 'UNSUPPORTED_FILE_TYPE';
@@ -379,11 +379,18 @@ function extractDocxText(buffer: Buffer): string {
     throw new Error('Could not read the DOCX document body.');
   }
 
-  const xml = documentXml
+  // A Word table commonly has a paragraph inside every cell. Convert the table
+  // before treating paragraphs as lines, otherwise every cell becomes its own row.
+  const tableAwareXml = documentXml.replace(/<w:tr\b[^>]*>([\s\S]*?)<\/w:tr>/g, (_row, cells) => (
+    `${cells.replace(/<\/w:tc>/g, '\t').replace(/<\/w:p>/g, ' ')}\n`
+  ));
+  const xml = tableAwareXml
+    // Keep table cells and rows distinct. Stripping all XML tags used to join a
+    // Word table into one sentence, so date-first schedule rows could not be read.
     .replace(/<\/w:p>|<\/w:tr>/g, '\n')
     .replace(/<[^>]+>/g, ' ');
 
-  return cleanText(decodeXmlEntities(xml));
+  return normalizeDocumentText(decodeXmlEntities(xml));
 }
 
 function readZipEntry(zip: Buffer, targetName: string): string | null {
@@ -430,7 +437,10 @@ function findEndOfCentralDirectory(zip: Buffer): number {
   return -1;
 }
 
-function parseDatedUpdates(text: string): ExtractedUpdate[] {
+export function parseDatedUpdates(text: string): ExtractedUpdate[] {
+  const tableUpdates = parseTableSchedule(text);
+  if (tableUpdates.length) return tableUpdates;
+
   const year = inferYear(text);
   const headingPattern = /\b((?:Sat(?:urday)?|Sun(?:day)?|Mon(?:day)?|Tue(?:s|sday)?|Tues(?:day)?|Wed(?:nesday)?|Thu(?:rs|rsday)?|Thursday|Fri(?:day)?))\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?\.?/gi;
   const matches = Array.from(text.matchAll(headingPattern));
@@ -468,6 +478,51 @@ function parseDatedUpdates(text: string): ExtractedUpdate[] {
   return updates;
 }
 
+function parseTableSchedule(text: string): ExtractedUpdate[] {
+  const updates: ExtractedUpdate[] = [];
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const columns = rawLine.split('\t').map(cleanText).filter(Boolean);
+    if (columns.length < 4) continue;
+
+    const startDate = parseTableDate(columns[0]);
+    if (!startDate) continue;
+
+    // Expected document columns: Date, Sport, Event, Time, Venue.
+    const [sport, title, timeRaw = '', venue = ''] = columns.slice(1);
+    if (!title) continue;
+    const time = /^(?:—|-|n\/?a)$/i.test(timeRaw) ? '' : extractTime(timeRaw) || timeRaw;
+    const [homeTeam, awayTeam] = extractTeams(title);
+    const normalizedVenue = /^(?:—|-|n\/?a)$/i.test(venue) ? '' : venue;
+    updates.push({
+      title: title.slice(0, 255),
+      description: title,
+      sport: sport || inferSport(title),
+      event_type: inferType(title),
+      start_date: startDate,
+      end_date: startDate,
+      time,
+      venue: normalizedVenue,
+      location: normalizedVenue,
+      home_team: homeTeam,
+      away_team: awayTeam,
+      confidence_score: 0.98,
+    });
+  }
+
+  return updates;
+}
+
+function parseTableDate(value: string): string | null {
+  const match = value.match(/^(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)(?:day)?\s+)?(\d{1,2})\s+([A-Za-z]+)\s+(20\d{2})$/i);
+  if (!match) return null;
+  const month = months[match[2].toLowerCase().replace(/\.$/, '')];
+  const day = Number(match[1]);
+  if (!month || day < 1 || day > 31) return null;
+  const result = `${match[3]}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  return new Date(`${result}T00:00:00Z`).toISOString().slice(0, 10) === result ? result : null;
+}
+
 function splitItems(segment: string): string[] {
   const normalized = segment.replace(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm))\s*[.]+\s*/gi, '$1 ');
   return normalized
@@ -483,6 +538,15 @@ function cleanText(value: string): string {
     .replace(/\s+([.,;:])/g, '$1')
     .trim()
     .replace(/^[.\s]+|[.\s]+$/g, '');
+}
+
+function normalizeDocumentText(value: string): string {
+  return decodeXmlEntities(value || '')
+    .replace(/\u2026/g, '...')
+    .replace(/[^\S\r\n\t]+/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .trim();
 }
 
 function decodeXmlEntities(value: string): string {
