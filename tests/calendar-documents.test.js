@@ -77,3 +77,14 @@ test('calendar document reads date-first Word or TXT table rows', () => {
   assert.equal(updates[1].start_date, '2026-10-20');
   assert.equal(updates[1].sport, 'Football');
 });
+
+test('calendar document reads date-first rows when Word flattens tab stops', () => {
+  const [update] = parseDatedUpdates(
+    'Mon 19 Oct 2026 Cricket IMC Over-40s Cricket World Cup: Colombia v Namibia 09:30 Lusignan Community Centre Ground'
+  );
+  assert.equal(update.start_date, '2026-10-19');
+  assert.equal(update.sport, 'Cricket');
+  assert.equal(update.title, 'IMC Over-40s Cricket World Cup: Colombia v Namibia');
+  assert.equal(update.time, '09:30');
+  assert.equal(update.venue, 'Lusignan Community Centre Ground');
+});

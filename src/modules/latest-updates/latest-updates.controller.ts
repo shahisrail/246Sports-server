@@ -441,6 +441,9 @@ export function parseDatedUpdates(text: string): ExtractedUpdate[] {
   const tableUpdates = parseTableSchedule(text);
   if (tableUpdates.length) return tableUpdates;
 
+  const flattenedTableUpdates = parseFlattenedTableSchedule(text);
+  if (flattenedTableUpdates.length) return flattenedTableUpdates;
+
   const year = inferYear(text);
   const headingPattern = /\b((?:Sat(?:urday)?|Sun(?:day)?|Mon(?:day)?|Tue(?:s|sday)?|Tues(?:day)?|Wed(?:nesday)?|Thu(?:rs|rsday)?|Thursday|Fri(?:day)?))\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?\.?/gi;
   const matches = Array.from(text.matchAll(headingPattern));
@@ -521,6 +524,53 @@ function parseTableDate(value: string): string | null {
   if (!month || day < 1 || day > 31) return null;
   const result = `${match[3]}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   return new Date(`${result}T00:00:00Z`).toISOString().slice(0, 10) === result ? result : null;
+}
+
+function parseFlattenedTableSchedule(text: string): ExtractedUpdate[] {
+  const sports = [
+    'Bodybuilding & Fitness', 'Mixed Martial Arts (MMA)', 'Canoeing / Kayaking', 'Sports Medicine',
+    'Track and Field', 'Table Tennis', 'Martial Arts', 'Horse racing', 'Beach soccer', 'Dance sport',
+    'Motorsport (Formula 1)', 'Field Hockey', 'Ice Skating', 'Road Tennis', 'Weightlifting',
+    'Motorsport', 'Triathlon', 'Equestrian', 'Badminton', 'Basketball', 'Cheerleading', 'Cycling',
+    'Cricket', 'Football', 'Netball', 'Archery', 'Boxing', 'Chess', 'Darts', 'Fencing', 'Golf',
+    'Gymnastics', 'Handball', 'Judo', 'Karate', 'Orienteering', 'Pool', 'Rowing', 'Rugby', 'Sailing',
+    'Shooting', 'Skateboarding', 'Skiing', 'Squash', 'Surfing', 'Swimming', 'Taekwondo', 'Tennis',
+    'Volleyball', 'Wrestling', 'Wushu', 'Bridge', 'Dance', 'Dominoes/Cards',
+  ].sort((a, b) => b.length - a.length);
+  const sportPattern = new RegExp(`^(${sports.map(escapeRegExp).join('|')})\\s+(.+)$`, 'i');
+  const updates: ExtractedUpdate[] = [];
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = cleanText(rawLine);
+    const dateMatch = line.match(/^(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)(?:day)?\s+)?(\d{1,2})\s+([A-Za-z]+)\s+(20\d{2})\s+(.+)$/i);
+    if (!dateMatch) continue;
+    const startDate = parseTableDate(`${dateMatch[1]} ${dateMatch[2]} ${dateMatch[3]}`);
+    const eventMatch = dateMatch[4].match(sportPattern);
+    if (!startDate || !eventMatch) continue;
+
+    const sport = eventMatch[1];
+    const content = eventMatch[2].trim();
+    const timeMatch = content.match(/\b\d{1,2}:\d{2}\b/);
+    const dashIndex = content.search(/\s(?:—|-)\s/);
+    const title = cleanText(timeMatch
+      ? content.slice(0, timeMatch.index)
+      : dashIndex >= 0 ? content.slice(0, dashIndex) : content);
+    const venue = cleanText(timeMatch
+      ? content.slice((timeMatch.index || 0) + timeMatch[0].length)
+      : dashIndex >= 0 ? content.slice(dashIndex + 3) : '');
+    if (!title) continue;
+    const [homeTeam, awayTeam] = extractTeams(title);
+    updates.push({
+      title: title.slice(0, 255), description: title, sport, event_type: inferType(title),
+      start_date: startDate, end_date: startDate, time: timeMatch?.[0] || '', venue, location: venue,
+      home_team: homeTeam, away_team: awayTeam, confidence_score: 0.9,
+    });
+  }
+  return updates;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function splitItems(segment: string): string[] {
